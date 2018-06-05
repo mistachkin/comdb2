@@ -1,0 +1,129 @@
+
+Comdb2 Ruleset-Based Task Pools
+
+Rule -- An expression, that when applied to the contextual criteria, produces
+        exactly one of the following results:
+
+        1. Nothing (NO-OP) -AND- cause subsequent rules to be run.
+
+        2. Nothing (NO-OP) -AND- cause subsequent rules to be skipped.  This
+           will typically cause the default task pool to be used.
+
+        2. A relative priority -AND- cause subsequent rules to be skipped.
+
+        3. A relative priority -AND- cause subsequent rules to be run, which
+           may modify or override the assigned relative priority.
+
+        4. A relative priority increment -AND- cause subsequent rules to be
+           skipped.
+
+        5. A relative priority increment -AND- cause subsequent rules to be
+           run, which may modify or override the assigned relative priority.
+
+        6. A relative priority decrement -AND- cause subsequent rules to be
+           skipped.
+
+        7. A relative priority decrement -AND- cause subsequent rules to be
+           run, which may modify or override the assigned relative priority.
+
+        8. A reserved relative priority value indicating that the SQL query
+           should be rejected -AND- cause subsequent rules to be run, which
+           may modify or override the assigned relative priority.
+
+        9. A reserved relative priority value indicating that the SQL query
+           should be rejected -AND- cause subsequent rules to be skipped.
+
+        Initially, the relative priority will be assigned the value of zero.
+        The valid range of relative priorities shall be -127 to 127.  Each
+        task pool will be assigned exactly one non-overlapping range of
+        relative priorities to be responsible for.  If, at the end of ruleset
+        processing, the relative priority is (still) zero, the default task
+        pool will be selected.  The value -128 shall be reserved to indicate
+        that the SQL query was rejected.
+
+Ruleset -- A sequence of zero or more rules, evaluated in order, which produce
+           a result consisting of a relative priority to assign to a given SQL
+           query, based on various contextual criteria.
+
+Task Pool -- A logical grouping of SQL queries corresponding to a particular
+             relative priority.  Internally, this will be modeled as a thread
+             pool, making use of the existing component(s) designed for this
+             purpose.  There is always at least one such thread pool, which is
+             used as the "default" task pool.  Additional thread pools will be
+             created and configured on-demand via the management interface.  A
+             given thread pool, other than the "default", will always have an
+             associated minimum/maximum number of threads and a relative
+             priority.  In the future, other parameters may be maintained on a
+             per-thread pool basis (e.g. stack size, heap limit, etc).  The
+             thread pool configuration will support persistence; however, it is
+             necessary to support transient thread pools (on-demand) as well.
+
+Criteria -- The nature of the SQL query (e.g. as determined by glob patterns,
+            regular expressions, etc).  Also, the originating user, machine,
+            or task.
+
+Management Interface -- A set of custom SQL functions with the "comdb2_" prefix
+                        used to create, configure, and introspect configured
+                        ruleset and thread pools.  The following set of logical
+                        operations will be supported:
+
+                        CREATE - Create a new thread pool using with a default
+                                 configuration.  This will fail if the system
+                                 is out of a needed resource, or the caller
+                                 does not have the necessary permission.  Upon
+                                 creation, a thread pool is stopped.
+
+                        PERSIST - Make this thread pool persistent.  This will
+                                  fail if the specified thread pool does not
+                                  exist, is already persistent, or the caller
+                                  does not have the necessary permission.
+
+                        UNPERSIST - Make this thread pool transient.  This will
+                                    fail if the specified thread pool does not
+                                    exist, is already transient, or the caller
+                                    does not have the necessary permission.
+
+                        LIST - Returns a list of thread pools with their
+                               associated metadata.  This will fail if the
+                               caller does not have the necessary permission.
+
+                        LIST_RULES - Returns the list of rules.  This will fail
+                                     if the caller does not have the necessary
+                                     permission.  If, at any time, there are no
+                                     rules, all SQL queries will be assigned to
+                                     the default thread pool.
+
+                        NO_RULES - Clear the list of rules.  This has no effect
+                                   on rules previously saved.  This will fail
+                                   if the caller does not have the necessary
+                                   permission.
+
+                        SAVE_RULES - Save the list of rules.  This will fail
+                                     if the caller does not have the necessary
+                                     permission.  This is potentially a lossy
+                                     operation because it will overwrite the
+                                     previously saved rules, if any.
+
+                        NEW_RULE - Add a rule at the end of the logical list.
+                                   This will fail if the caller does not have
+                                   the necessary permission.  The new rule is
+                                   transient until saved.
+
+                        START - Start an existing thread pool.  This will fail
+                                if the specified thread pool does not exist,
+                                the system is out of a needed resource, or the
+                                caller does not have the necessary permission.
+
+                        STOP - Stop an existing thread pool.  Persistent thread
+                               pools will still be restarted next time the
+                               server is started or restarted.  This will fail
+                               if the specified thread pool does not exist or
+                               the caller does not have the necessary permission.
+
+                        CONFIGURE - Configure an existing thread pool.  This
+                                    will fail if the specified thread pool does
+                                    not exist, the system is out of a needed
+                                    resource, or the caller does not have the
+                                    necessary permission.  The parameters to be
+                                    configured may include minimum thread count,
+                                    maximum thread count, and relative priority.
