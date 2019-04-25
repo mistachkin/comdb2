@@ -125,7 +125,7 @@ extern "C" {
 */
 #define SQLITE_VERSION        "3.28.0"
 #define SQLITE_VERSION_NUMBER 3028000
-#define SQLITE_SOURCE_ID      "2019-04-08 18:24:07 a81f84f37c4096739bc7dd54b3ad35f6ce4487de2613b47c0aab7fbf9649alt1"
+#define SQLITE_SOURCE_ID      "2019-04-23 16:19:00 4ff9da96b8258b25015ee313b281fb8dfe2d856572ecbddcc63b762a33f9f32f"
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
 #include <types.h>
@@ -3027,6 +3027,27 @@ SQLITE_API int sqlite3_set_authorizer(
 #define SQLITE_SAVEPOINT            32   /* Operation       Savepoint Name  */
 #define SQLITE_COPY                  0   /* No longer used */
 #define SQLITE_RECURSIVE            33   /* NULL            NULL            */
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+#define SQLITE_REBUILD_TABLE       160   /* NULL            NULL            */
+#define SQLITE_REBUILD_INDEX       161   /* NULL            NULL            */
+#define SQLITE_REBUILD_DATA        162   /* NULL            NULL            */
+#define SQLITE_REBUILD_DATABLOB    163   /* NULL            NULL            */
+#define SQLITE_TRUNCATE_TABLE      164   /* NULL            NULL            */
+#define SQLITE_CREATE_PROC         166   /* NULL            NULL            */
+#define SQLITE_DROP_PROC           168   /* NULL            NULL            */
+#define SQLITE_CREATE_PART         169   /* NULL            NULL            */
+#define SQLITE_DROP_PART           170   /* NULL            NULL            */
+#define SQLITE_GET_TUNABLE         171   /* NULL            NULL            */
+#define SQLITE_PUT_TUNABLE         172   /* NULL            NULL            */
+#define SQLITE_GRANT               173   /* NULL            NULL            */
+#define SQLITE_REVOKE              174   /* NULL            NULL            */
+#define SQLITE_CREATE_LUA_FUNCTION 175   /* NULL            NULL            */
+#define SQLITE_DROP_LUA_FUNCTION   176   /* NULL            NULL            */
+#define SQLITE_CREATE_LUA_TRIGGER  177   /* NULL            NULL            */
+#define SQLITE_DROP_LUA_TRIGGER    178   /* NULL            NULL            */
+#define SQLITE_CREATE_LUA_CONSUMER 179   /* NULL            NULL            */
+#define SQLITE_DROP_LUA_CONSUMER   180   /* NULL            NULL            */
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 /*
 ** CAPI3REF: Tracing And Profiling Functions
