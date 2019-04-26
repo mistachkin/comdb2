@@ -393,6 +393,15 @@ int comdb2_objpool_stats(comdb2_objpool_t op)
 {
     Pthread_mutex_lock(&op->data_mutex);
 
+
+extern int gbl_total_sql_temp_tables;
+fprintf(stdout, "CURRENT gbl_total_sql_temp_tables = %d\n", gbl_total_sql_temp_tables);
+
+
+extern int gbl_temp_table_cursor_create;
+fprintf(stdout, "CURRENT gbl_temp_table_cursor_create = %d\n", gbl_temp_table_cursor_create);
+
+
     /* status */
     logmsg(LOGMSG_USER, "Object pool [%s] stats\n", op->name);
     logmsg(LOGMSG_USER, "  Type                 : %s\n", objpool_type_name(op));

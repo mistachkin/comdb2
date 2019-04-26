@@ -4339,7 +4339,7 @@ case OP_OpenEphemeral: {
       if( (pCx->pKeyInfo = pKeyInfo = pOp->p4.pKeyInfo)!=0 ){
         assert( pOp->p4type==P4_KEYINFO );
         rc = sqlite3BtreeCreateTable(pCx->pBtx, (int*)&pCx->pgnoRoot,
-                                     BTREE_BLOBKEY | pOp->p5); 
+                                     BTREE_BLOBKEY | pOp->p5 | BTREE_EPHEM); 
         if( rc==SQLITE_OK ){
           assert( pCx->pgnoRoot==MASTER_ROOT+1 );
           assert( pKeyInfo->db==db );
@@ -4357,7 +4357,7 @@ case OP_OpenEphemeral: {
       }else{
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
         int pgno;
-        rc = sqlite3BtreeCreateTable(pCx->pBtx, &pgno, BTREE_INTKEY);
+        rc = sqlite3BtreeCreateTable(pCx->pBtx, &pgno, BTREE_INTKEY | BTREE_EPHEM);
         if( rc==SQLITE_OK ){
           pCx->pgnoRoot = pgno;
           rc = sqlite3BtreeCursor(p, pCx->pBtx, pgno,

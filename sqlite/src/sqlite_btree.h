@@ -108,6 +108,7 @@ int sqlite3BtreeIncrVacuum(Btree *);
 */
 #define BTREE_INTKEY     1    /* Table has only 64-bit signed integer keys */
 #define BTREE_BLOBKEY    2    /* Table has keys only - no data */
+#define BTREE_EPHEM      4    /* Table was created for ephemermal use */
 
 int sqlite3BtreeDropTable(Btree*, int, int*);
 int sqlite3BtreeClearTable(Btree*, int, int*);

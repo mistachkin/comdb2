@@ -54,6 +54,8 @@ as long as there was a successful move in the past
 #  define __EXTENSIONS__
 #endif
 
+int gbl_temp_table_cursor_create = 0;
+
 #ifdef NEWSI_STAT
 #include <time.h>
 #include <sys/time.h>
@@ -6087,6 +6089,7 @@ static int bdb_cursor_move_int(bdb_cursor_impl_t *cur, int how, int *bdberr)
         /* Create my vs_stab temp_table if it doesn't exist. */
         if (cur->vs_skip == NULL) {
             cur->vs_stab = bdb_temp_table_create(cur->state, bdberr);
+if(cur->vs_stab!=NULL) gbl_temp_table_cursor_create++;
         }
         /* Otherwise truncate it. */
         else {
@@ -6459,7 +6462,7 @@ static int bdb_cursor_close(bdb_cursor_ifn_t *pcur_ifn, int *bdberr)
             logmsg(LOGMSG_ERROR, "%s: error closing vs_stab table %d %d\n", __func__,
                     rc, *bdberr);
         }
-
+        gbl_temp_table_cursor_create--;
         cur->vs_skip = NULL;
         cur->vs_stab = NULL;
     }

@@ -22,6 +22,8 @@
 #include "types.c"
 #endif
 
+int gbl_total_sql_temp_tables = 0;
+
 /*
   low level code needed to support sql
  */
@@ -3202,8 +3204,8 @@ static int releaseTempTableRef(
   struct temptable *pTbl,
   int bRemove
 ){
-    assert( pTbl->nRef>0 );
-    if (pTbl != NULL && --pTbl->nRef == 0) {
+    assert( pTbl->nRef>=0 );
+    if (pTbl != NULL && --pTbl->nRef <= 0) {
         if (pTbl->tbl != NULL) {
             int rc;
             int bdberr = 0;
@@ -3218,6 +3220,10 @@ static int releaseTempTableRef(
                 ++pTbl->nRef; /* UNDO */
                 return SQLITE_INTERNAL;
             }
+
+        gbl_total_sql_temp_tables--;
+
+
         }
         /* pTbl->tbl = NULL; */
         free(pTbl);
@@ -5173,7 +5179,7 @@ int sqlite3BtreeCreateTable(Btree *pBt, int *piTable, int flags)
         }
 
         pNewEntry->value = pNewTbl;
-        pNewTbl->nRef = 1;
+
 
 #ifndef NDEBUG
         pNewTbl->temp_table_mtx = pBt->temp_table_mtx;
@@ -5208,6 +5214,9 @@ int sqlite3BtreeCreateTable(Btree *pBt, int *piTable, int flags)
             rc = SQLITE_INTERNAL;
             goto done;
         }
+
+        gbl_total_sql_temp_tables++;
+
         pNewTbl->tbl = tbl;
         pNewTbl->lk = tmptbl_lk;
         pNewTbl->flags = flags;
@@ -7408,7 +7417,7 @@ sqlite3BtreeCursor_temptable(Btree *pBt,      /* The btree */
 
     cur->cursor_class = CURSORCLASS_TEMPTABLE;
     assert( src->tbl );
-    assert( src->nRef>0 );
+//    assert( src->nRef>0 );
     cur->tmptable->tbl = src->tbl;
     src->nRef++;
     if (src->lk) {

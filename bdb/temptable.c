@@ -456,7 +456,7 @@ static struct temp_table *bdb_temp_table_create_main(bdb_state_type *bdb_state,
     tbl->temp_hash_tbl = hash_init_user(hashfunc, hashcmpfunc, 0, 0);
 
 #ifdef _LINUX_SOURCE
-    if (gbl_debug_temptables) {
+    /*if (gbl_debug_temptables)*/ {
         char *sql;
         sql = pthread_getspecific(current_sql_query_key);
         if (sql)
@@ -550,9 +550,15 @@ static struct temp_table *bdb_temp_table_create_type(bdb_state_type *bdb_state,
         case TMPTBL_PRIORITY:
             comdb2_objpool_forcedborrow(bdb_state->temp_table_pool,
                                         (void **)&table);
+
+            fprintf(stdout, "FORCED BORROW FROM POOL %p\n", table);
+
             break;
         case TMPTBL_WAIT:
             comdb2_objpool_borrow(bdb_state->temp_table_pool, (void **)&table);
+
+            fprintf(stdout, "BORROW FROM POOL %p\n", table);
+
             break;
         }
     }
@@ -1252,6 +1258,9 @@ int bdb_temp_table_close(bdb_state_type *bdb_state, struct temp_table *tbl,
     Pthread_mutex_unlock(&(bdb_state->temp_list_lock));
 
     if (gbl_temptable_pool_capacity > 0) {
+
+fprintf(stdout, "RETURN TO POOL %p\n", tbl);
+
         rc = comdb2_objpool_return(bdb_state->temp_table_pool, tbl);
         if (rc == 0) {
             if (bdb_state->haspriosqlthr &&
@@ -1262,6 +1271,10 @@ int bdb_temp_table_close(bdb_state_type *bdb_state, struct temp_table *tbl,
                     bdb_state->haspriosqlthr = 0;
                 Pthread_mutex_unlock(&(bdb_state->temp_list_lock));
             }
+        } else {
+
+fprintf(stdout, "FAILED TO RETURN %d\n", rc);
+
         }
     }
 
