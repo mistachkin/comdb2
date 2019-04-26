@@ -114,6 +114,7 @@ struct temptable {
     int nRef;
     pthread_mutex_t *lk;
 #ifndef NDEBUG
+    int wasCloned;                   /* WARNING: For assert() only, do NOT use. */
     pthread_mutex_t *temp_table_mtx; /* WARNING: For assert() only, do NOT use. */
 #endif
 };
@@ -3202,8 +3203,9 @@ static int releaseTempTableRef(
   struct temptable *pTbl,
   int bRemove
 ){
-    assert( pTbl->nRef>0 );
-    if (pTbl != NULL && --pTbl->nRef == 0) {
+    assert( pTbl->nRef>=0 );
+    assert( !pTbl->wasCloned || pTbl->nRef>0 );
+    if (pTbl != NULL && --pTbl->nRef <= 0) {
         if (pTbl->tbl != NULL) {
             int rc;
             int bdberr = 0;
@@ -5162,6 +5164,7 @@ int sqlite3BtreeCreateTable(Btree *pBt, int *piTable, int flags)
         assert( tmptbl_clone->temp_table_mtx==pBt->temp_table_mtx );
         pNewTbl = pNewEntry->value = tmptbl_clone;
         pNewTbl->nRef++;
+        pNewTbl->wasCloned = 1;
     } else {
         pNewTbl = calloc(1, sizeof(struct temptable));
 
@@ -5173,7 +5176,8 @@ int sqlite3BtreeCreateTable(Btree *pBt, int *piTable, int flags)
         }
 
         pNewEntry->value = pNewTbl;
-        pNewTbl->nRef = 1;
+        // pNewTbl->wasCloned = 0; /* calloc */
+        // pNewTbl->nRef = 0;      /* calloc */
 
 #ifndef NDEBUG
         pNewTbl->temp_table_mtx = pBt->temp_table_mtx;
@@ -7408,7 +7412,8 @@ sqlite3BtreeCursor_temptable(Btree *pBt,      /* The btree */
 
     cur->cursor_class = CURSORCLASS_TEMPTABLE;
     assert( src->tbl );
-    assert( src->nRef>0 );
+    assert( src->nRef>=0 );
+    assert( !src->wasCloned || src->nRef>0 );
     cur->tmptable->tbl = src->tbl;
     src->nRef++;
     if (src->lk) {
