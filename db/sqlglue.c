@@ -3462,7 +3462,7 @@ int sqlite3BtreeOpen(
         */
         int masterPgno;
         assert( tmptbl_clone==NULL );
-        rc = sqlite3BtreeCreateTable(bt, &masterPgno, BTREE_INTKEY);
+        rc = sqlite3BtreeCreateTable(bt, &masterPgno, BTREE_INTKEY | BTREE_ADDREF);
         assert( masterPgno==1 ); /* sqlite_temp_master root page number */
         if( rc!=SQLITE_OK ){
             Pthread_mutex_lock(bt->temp_table_mtx);
@@ -5176,8 +5176,8 @@ int sqlite3BtreeCreateTable(Btree *pBt, int *piTable, int flags)
         }
 
         pNewEntry->value = pNewTbl;
+        if (flags & BTREE_ADDREF) pNewTbl->nRef = 1;
         // pNewTbl->wasCloned = 0; /* calloc */
-        // pNewTbl->nRef = 0;      /* calloc */
 
 #ifndef NDEBUG
         pNewTbl->temp_table_mtx = pBt->temp_table_mtx;
@@ -8312,7 +8312,7 @@ int sqlite3BtreeCursor(
             int tmpPgno;
             Pthread_mutex_unlock(pBt->temp_table_mtx);
             assert( tmptbl_clone==NULL );
-            rc = sqlite3BtreeCreateTable(pBt, &tmpPgno, BTREE_INTKEY);
+            rc = sqlite3BtreeCreateTable(pBt, &tmpPgno, BTREE_INTKEY | BTREE_ADDREF);
             Pthread_mutex_lock(pBt->temp_table_mtx);
             assert( tmpPgno==iTable );
           }
