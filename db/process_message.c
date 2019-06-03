@@ -1365,6 +1365,29 @@ clipper_usage:
                 blkmax, gbl_maxwthreads);
     }
 
+    else if (tokcmp(tok, ltok, "temptable_clear") == 0) {
+        int rcp = bdb_temp_table_clear_pool(thedb->bdb_env);
+        if (gbl_temptable_pool_capacity == 0) {
+            logmsg(LOGMSG_USER, "Temptable list was %scleared.\n",
+                   (rcp == 0) ? "" : "not ");
+        } else {
+            if (rcp == 0) {
+                logmsg(LOGMSG_USER, "Temptable pool was cleared.\n");
+            } else {
+                logmsg(LOGMSG_USER, "Temptable pool was not available.\n");
+            }
+        }
+    }
+    else if (tokcmp(tok, ltok, "temptable_counts") == 0) {
+        extern int gbl_temptable_count;
+        extern int gbl_sql_temptable_count;
+        int temptable_count = ATOMIC_LOAD(gbl_temptable_count);
+        int sql_temptable_count = ATOMIC_LOAD(gbl_sql_temptable_count);
+        logmsg(LOGMSG_USER,
+                "Overall temptable count is %d, SQL temptable count is %d\n",
+                temptable_count, sql_temptable_count);
+    }
+
     /*
        pagesize set <tablename> <data|blob|index> <pagesize>
        pagesize specified in bytes: 65536 for 64K pages

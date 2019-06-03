@@ -117,6 +117,8 @@ extern int gbl_debug_tmptbl_corrupt_mem;
 // Don't create new btree, use this one (tmptbl_clone)
 static __thread struct temptable *tmptbl_clone = NULL;
 
+int gbl_sql_temptable_count;
+
 void free_cached_idx(uint8_t **cached_idx)
 {
     int i;
@@ -4994,12 +4996,14 @@ int sqlite3BtreeCreateTable(Btree *pBt, int *piTable, int flags)
     pNewTbl->rootpage = ++pBt->num_temp_tables;
     if (pBt->is_hashtable) {
         pNewTbl->tbl = bdb_temp_hashtable_create(thedb->bdb_env, &bdberr);
+        if (pNewTbl->tbl != NULL) ATOMIC_ADD(gbl_sql_temptable_count, 1);
     } else if (tmptbl_clone) {
         pNewTbl->lk = tmptbl_clone->lk;
         pNewTbl->tbl = tmptbl_clone->tbl;
         pNewTbl->owner = tmptbl_clone->owner;
     } else {
         pNewTbl->tbl = bdb_temp_table_create(thedb->bdb_env, &bdberr);
+        if (pNewTbl->tbl != NULL) ATOMIC_ADD(gbl_sql_temptable_count, 1);
     }
     if (pNewTbl->tbl == NULL) {
         --pBt->num_temp_tables;

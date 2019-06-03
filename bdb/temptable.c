@@ -81,6 +81,8 @@ struct hashobj {
     unsigned char data[/*len*/];
 };
 
+int gbl_temptable_count;
+
 unsigned int hashfunc(const void *key, int len)
 {
     struct hashobj *o = (struct hashobj *)key;
@@ -615,9 +617,34 @@ static struct temp_table *bdb_temp_table_create_main(bdb_state_type *bdb_state,
     ++gbl_temptable_created;
 
 done:
+    if (tbl != NULL) ATOMIC_ADD(gbl_temptable_count, 1);
+
     dbgtrace(3, "temp_table_create(%s) = %d", tbl ? tbl->filename : "failed",
              tbl ? tbl->tblid : -1);
     return tbl;
+}
+
+int bdb_temp_table_clear_pool(bdb_state_type *bdb_state)
+{
+    if (gbl_temptable_pool_capacity == 0) {
+        int rc = 0;
+        int last = 0;
+        while (rc == 0 && last == 0) {
+            int bdberr = 0;
+            rc = bdb_temp_table_destroy_lru(NULL, bdb_state, &last, &bdberr);
+            if (rc != 0) {
+                logmsg(LOGMSG_USER,
+                       "%s: failed to destroy a temp table object rc=%d, bdberr=%d\n",
+                       __func__, rc, bdberr);
+            }
+        }
+        return rc;
+    } else {
+        comdb2_objpool_t op = bdb_state->temp_table_pool;
+        if (op == NULL) return EINVAL;
+        comdb2_objpool_clear(op);
+        return 0;
+    }
 }
 
 int bdb_temp_table_create_pool_wrapper(void **tblp, void *bdb_state_arg)
@@ -1616,6 +1643,13 @@ int bdb_temp_table_destroy_lru(struct temp_table *tbl,
     /* close the environments*/
     if (tbl->dbenv_temp != NULL)
         rc = bdb_temp_table_env_close(bdb_state, tbl, bdberr);
+
+    if (rc == 0) {
+        ATOMIC_ADD(gbl_temptable_count, -1);
+    } else {
+        logmsg(LOGMSG_ERROR, "%s: bdb_temp_table_env_close(%p) rc %d\n",
+               __func__, tbl, rc);
+    }
 
     free(tbl);
 
