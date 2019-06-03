@@ -123,9 +123,9 @@ extern "C" {
 ** [sqlite3_libversion_number()], [sqlite3_sourceid()],
 ** [sqlite_version()] and [sqlite_source_id()].
 */
-#define SQLITE_VERSION        "3.28.0"
-#define SQLITE_VERSION_NUMBER 3028000
-#define SQLITE_SOURCE_ID      "2019-04-23 16:19:00 4ff9da96b8258b25015ee313b281fb8dfe2d856572ecbddcc63b762a33f9f32f"
+#define SQLITE_VERSION        "3.29.0"
+#define SQLITE_VERSION_NUMBER 3029000
+#define SQLITE_SOURCE_ID      "2019-06-03 15:28:48 e7a6efbf9c2fce0ca82ca7752dd64e4a870ae398024bc77a67d82d0c32129d80"
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
 #include <types.h>
@@ -2226,6 +2226,7 @@ struct sqlite3_mem_methods {
 ** features include but are not limited to the following:
 ** <ul>
 ** <li> The [PRAGMA writable_schema=ON] statement.
+** <li> The [PRAGMA journal_mode=OFF] statement.
 ** <li> Writes to the [sqlite_dbpage] virtual table.
 ** <li> Direct writes to [shadow tables].
 ** </ul>
@@ -3027,27 +3028,6 @@ SQLITE_API int sqlite3_set_authorizer(
 #define SQLITE_SAVEPOINT            32   /* Operation       Savepoint Name  */
 #define SQLITE_COPY                  0   /* No longer used */
 #define SQLITE_RECURSIVE            33   /* NULL            NULL            */
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-#define SQLITE_REBUILD_TABLE       160   /* NULL            NULL            */
-#define SQLITE_REBUILD_INDEX       161   /* NULL            NULL            */
-#define SQLITE_REBUILD_DATA        162   /* NULL            NULL            */
-#define SQLITE_REBUILD_DATABLOB    163   /* NULL            NULL            */
-#define SQLITE_TRUNCATE_TABLE      164   /* NULL            NULL            */
-#define SQLITE_CREATE_PROC         166   /* NULL            NULL            */
-#define SQLITE_DROP_PROC           168   /* NULL            NULL            */
-#define SQLITE_CREATE_PART         169   /* NULL            NULL            */
-#define SQLITE_DROP_PART           170   /* NULL            NULL            */
-#define SQLITE_GET_TUNABLE         171   /* NULL            NULL            */
-#define SQLITE_PUT_TUNABLE         172   /* NULL            NULL            */
-#define SQLITE_GRANT               173   /* NULL            NULL            */
-#define SQLITE_REVOKE              174   /* NULL            NULL            */
-#define SQLITE_CREATE_LUA_FUNCTION 175   /* NULL            NULL            */
-#define SQLITE_DROP_LUA_FUNCTION   176   /* NULL            NULL            */
-#define SQLITE_CREATE_LUA_TRIGGER  177   /* NULL            NULL            */
-#define SQLITE_DROP_LUA_TRIGGER    178   /* NULL            NULL            */
-#define SQLITE_CREATE_LUA_CONSUMER 179   /* NULL            NULL            */
-#define SQLITE_DROP_LUA_CONSUMER   180   /* NULL            NULL            */
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 /*
 ** CAPI3REF: Tracing And Profiling Functions
@@ -7437,7 +7417,8 @@ SQLITE_API int sqlite3_test_control(int op, ...);
 #define SQLITE_TESTCTRL_SORTER_MMAP             24
 #define SQLITE_TESTCTRL_IMPOSTER                25
 #define SQLITE_TESTCTRL_PARSER_COVERAGE         26
-#define SQLITE_TESTCTRL_LAST                    26  /* Largest TESTCTRL */
+#define SQLITE_TESTCTRL_RESULT_INTREAL          27
+#define SQLITE_TESTCTRL_LAST                    27  /* Largest TESTCTRL */
 
 /*
 ** CAPI3REF: SQL Keyword Checking
