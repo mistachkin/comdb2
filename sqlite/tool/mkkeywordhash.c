@@ -371,6 +371,7 @@ static Keyword aKeywordTable[] = {
   { "PENDING",          "TK_PENDING",        ALWAYS               },
   { "PROCEDURE",        "TK_PROCEDURE",      ALWAYS               },
   { "PUT",              "TK_PUT",            ALWAYS               },
+  { "QUEUE",            "TK_QUEUE",          ALWAYS               },
   { "READ",             "TK_READ",           ALWAYS               },
   { "READONLY",         "TK_READONLY",       ALWAYS               },
   { "REBUILD",          "TK_REBUILD",        ALWAYS               },

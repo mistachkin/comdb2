@@ -317,7 +317,7 @@ columnname(A) ::= nm(A) typetoken(Y). {sqlite3AddColumn(pParse,&A,&Y);}
   ENABLE EXEC EXECUTE FUNCTION GENID48 GET GRANT INCREMENT IPU ISC KW
   LUA LZ4 NONE
   ODH OFF OP OPTION OPTIONS
-  PAGEORDER PASSWORD PAUSE PERIOD PENDING PROCEDURE PUT
+  PAGEORDER PASSWORD PAUSE PERIOD PENDING PROCEDURE PUT QUEUE
   REBUILD READ READONLY REC RESERVED RESUME RETENTION REVOKE RLE ROWLOCKS
   SCALAR SCHEMACHANGE SKIPSCAN START SUMMARIZE
   THREADS THRESHOLD TIME TRUNCATE TUNABLE TYPE
@@ -2193,6 +2193,11 @@ rebuild ::= REBUILD DATA nm(T) dbnm(X) comdb2opt(O). {
 
 rebuild ::= REBUILD DATABLOB nm(N) dbnm(X) comdb2opt(O). {
     comdb2RebuildDataBlob(pParse,&N, &X, O);
+}
+
+rebuild ::= REBUILD QUEUE nm(T) comdb2opt(O). {
+    // TODO: Replace with comdb2RebuildQueue...
+    comdb2RebuildIndex(pParse, &T,0,0,O);
 }
 
 //////////////////////////// SCHEMA CHANGE CONTROL ////////////////////////////
