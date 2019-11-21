@@ -838,7 +838,7 @@ static inline void comdb2Rebuild(Parse *pParse, Token* nm, Token* lnm, int opt)
     sc->convert_sleep = gbl_convert_sleep;
 
     sc->same_schema = 1;
-    if(get_csc2_file(sc->tablename, -1 , &sc->newcsc2, NULL ))
+    if(!is_queue && get_csc2_file(sc->tablename, -1 , &sc->newcsc2, NULL ))
     {
         logmsg(LOGMSG_ERROR, "%s: table schema not found: %s\n", __func__,
                sc->tablename);

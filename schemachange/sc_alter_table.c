@@ -28,6 +28,7 @@
 #include "sc_logic.h"
 #include "sc_records.h"
 #include "analyze.h"
+#include "comdb2.h"
 #include "comdb2_atomic.h"
 
 static int prepare_sc_plan(struct schema_change_type *s, int old_changed,
@@ -373,6 +374,7 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
     int i;
     char new_prefix[32];
     int foundix;
+    int is_queue = (s->type == DBTYPE_QUEUEDB);
 
     struct scinfo scinfo;
 
@@ -383,9 +385,11 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
     gbl_use_plan = 1;
     gbl_sc_last_writer_time = 0;
 
-    db = get_dbtable_by_name(s->tablename);
+    db = is_queue ? getqueuebyname(s->tablename) :
+                    get_dbtable_by_name(s->tablename);
     if (db == NULL) {
-        sc_errf(s, "Table not found:%s\n", s->tablename);
+        sc_errf(s, "%s not found:%s\n", is_queue ? "Queue" : "Table",
+                s->tablename);
         return SC_TABLE_DOESNOT_EXIST;
     }
 
@@ -401,43 +405,56 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
 
     sc_printf(s, "starting schema update with seed %llx\n", iq->sc_seed);
 
-    Pthread_mutex_lock(&csc2_subsystem_mtx);
-    if ((rc = load_db_from_schema(s, thedb, &foundix, iq))) {
-        Pthread_mutex_unlock(&csc2_subsystem_mtx);
-        return rc;
-    }
+    if (is_queue) {
+        newdb = newqdb(
+            thedb, s->tablename, db->avgitemsz, db->queue_pagesize_override, 1
+        );
 
-    newdb = create_db_from_schema(thedb, s, db->dbnum, foundix, -1);
-
-    if (newdb == NULL) {
-        sc_errf(s, "Internal error\n");
-        Pthread_mutex_unlock(&csc2_subsystem_mtx);
-        return SC_INTERNAL_ERROR;
-    }
-    newdb->schema_version = get_csc2_version(newdb->tablename);
-
-    newdb->iq = iq;
-
-    if ((add_cmacc_stmt(newdb, 1)) || (init_check_constraints(newdb))) {
-        backout(newdb);
-        cleanup_newdb(newdb);
-        sc_errf(s, "Failed to process schema!\n");
-        Pthread_mutex_unlock(&csc2_subsystem_mtx);
-        return -1;
-    }
-
-    if ((rc = sql_syntax_check(iq, newdb))) {
-        Pthread_mutex_unlock(&csc2_subsystem_mtx);
-        sc_errf(s, "Sqlite syntax check failed\n");
-        backout(newdb);
-        cleanup_newdb(newdb);
-        return SC_CSC2_ERROR;
+        if (newdb == NULL) {
+            sc_errf(s, "Internal error\n");
+            return SC_INTERNAL_ERROR;
+        }
     } else {
-        sc_printf(s, "Sqlite syntax check succeeded\n");
-    }
-    newdb->ix_blob = newdb->schema->ix_blob;
+        Pthread_mutex_lock(&csc2_subsystem_mtx);
+        if ((rc = load_db_from_schema(s, thedb, &foundix, iq))) {
+            Pthread_mutex_unlock(&csc2_subsystem_mtx);
+            return rc;
+        }
 
-    Pthread_mutex_unlock(&csc2_subsystem_mtx);
+        newdb = create_db_from_schema(thedb, s, db->dbnum, foundix, -1);
+
+        if (newdb == NULL) {
+            sc_errf(s, "Internal error\n");
+            Pthread_mutex_unlock(&csc2_subsystem_mtx);
+            return SC_INTERNAL_ERROR;
+        }
+        newdb->schema_version = get_csc2_version(newdb->tablename);
+    }
+
+    newdb->iq = iq; /* TODO: Move me up? */
+
+    if (!is_queue) {
+        if ((add_cmacc_stmt(newdb, 1)) || (init_check_constraints(newdb))) {
+            backout(newdb);
+            cleanup_newdb(newdb);
+            sc_errf(s, "Failed to process schema!\n");
+            Pthread_mutex_unlock(&csc2_subsystem_mtx);
+            return -1;
+        }
+
+        if ((rc = sql_syntax_check(iq, newdb))) {
+            Pthread_mutex_unlock(&csc2_subsystem_mtx);
+            sc_errf(s, "Sqlite syntax check failed\n");
+            backout(newdb);
+            cleanup_newdb(newdb);
+            return SC_CSC2_ERROR;
+        } else {
+            sc_printf(s, "Sqlite syntax check succeeded\n");
+        }
+        newdb->ix_blob = newdb->schema->ix_blob;
+
+        Pthread_mutex_unlock(&csc2_subsystem_mtx);
+    }
 
     if ((iq == NULL || iq->tranddl <= 1) &&
         verify_constraints_exist(NULL, newdb, newdb, s) != 0) {
