@@ -1012,6 +1012,23 @@ out:
     free_schema_change_type(sc);
 }
 
+void comdb2RebuildQueue(Parse* pParse, Token* nm, int opt)
+{
+    if (comdb2IsPrepareOnly(pParse))
+        return;
+
+#ifndef SQLITE_OMIT_AUTHORIZATION
+    {
+        if( sqlite3AuthCheck(pParse, SQLITE_REBUILD_QUEUE, 0, 0, 0) ){
+            setError(pParse, SQLITE_AUTH, COMDB2_NOT_AUTHORIZED_ERRMSG);
+            return;
+        }
+    }
+#endif
+
+    comdb2Rebuild(p, nm, 0, REBUILD_ALL + REBUILD_DATA + opt);
+}
+
 /********************** STORED PROCEDURES ****************************************/
 
 void comdb2CreateProcedure(Parse* pParse, Token* nm, Token* ver, Token* proc)

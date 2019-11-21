@@ -2196,8 +2196,7 @@ rebuild ::= REBUILD DATABLOB nm(N) dbnm(X) comdb2opt(O). {
 }
 
 rebuild ::= REBUILD QUEUE nm(T) comdb2opt(O). {
-    // TODO: Replace with comdb2RebuildQueue...
-    comdb2RebuildIndex(pParse, &T,0,0,O);
+    comdb2RebuildQueue(pParse, &T,O);
 }
 
 //////////////////////////// SCHEMA CHANGE CONTROL ////////////////////////////

@@ -97,6 +97,7 @@ void comdb2RebuildFull(Parse*,Token*,Token*,int opt);
 void comdb2RebuildIndex(Parse*, Token*, Token*, Token*,int opt);
 void comdb2RebuildData(Parse*, Token*, Token*,int opt);
 void comdb2RebuildDataBlob(Parse*,Token*, Token*,int opt);
+void comdb2RebuildQueue(Parse* pParse, Token*, int opt);
 void comdb2Truncate(Parse*, Token*, Token*);
 
 void comdb2SchemachangeControl(Parse*, int, Token*, Token *);
