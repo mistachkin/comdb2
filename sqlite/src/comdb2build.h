@@ -32,6 +32,7 @@
 #define REBUILD_ALL     1
 #define REBUILD_DATA    2
 #define REBUILD_BLOB    4
+#define REBUILD_QUEUE   8
 
 #define OPT_ON(opt, val) (val & opt)
 

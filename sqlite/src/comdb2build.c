@@ -114,7 +114,8 @@ static int authenticateSC(const char *table, Parse *pParse);
 /* chkAndCopyTable expects the dst (OUT) buffer to be of MAXTABLELEN size. */
 static inline int chkAndCopyTable(Parse *pParse, char *dst, const char *name,
                                   size_t name_len, int error_flag,
-                                  int check_shard, int *table_exists)
+                                  int check_shard, int *table_exists,
+                                  int is_queue)
 {
     int rc = 0;
     char *table_name;
@@ -130,7 +131,11 @@ static inline int chkAndCopyTable(Parse *pParse, char *dst, const char *name,
 
     /* Check whether table name length is valid. */
     if (strlen(table_name) >= MAXTABLELEN) {
-        rc = setError(pParse, SQLITE_MISUSE, "Table name is too long");
+        if (is_queue) {
+          rc = setError(pParse, SQLITE_MISUSE, "Queue name is too long");
+        } else {
+          rc = setError(pParse, SQLITE_MISUSE, "Table name is too long");
+        }
         goto cleanup;
     }
 
@@ -179,21 +184,30 @@ static inline int chkAndCopyTable(Parse *pParse, char *dst, const char *name,
 
     if(!timepart_is_timepart(dst, 1))
     {
-        struct dbtable *db = get_dbtable_by_name(dst);
+        struct dbtable *db = is_queue ? getqueuebyname(dst) :
+                                        get_dbtable_by_name(dst);
 
         if (table_exists) {
             *table_exists = (db) ? 1 : 0;
         }
 
         if (db == NULL && (error_flag == ERROR_ON_TBL_NOT_FOUND)) {
-            rc = setError(pParse, SQLITE_ERROR, "Table not found");
+            if (is_queue) {
+                rc = setError(pParse, SQLITE_ERROR, "Queue not found");
+            } else {
+                rc = setError(pParse, SQLITE_ERROR, "Table not found");
+            }
             goto cleanup;
         }
 
         struct dbview *view = get_view_by_name(dst);
         if ((db != NULL || view != NULL) &&
             (error_flag == ERROR_ON_TBL_FOUND)) {
-            rc = setError(pParse, SQLITE_ERROR, "Table already exists");
+            if (is_queue) {
+                rc = setError(pParse, SQLITE_ERROR, "Queue already exists");
+            } else {
+                rc = setError(pParse, SQLITE_ERROR, "Table already exists");
+            }
             goto cleanup;
         }
 
@@ -268,7 +282,8 @@ static inline int copyNoSqlToken(
 
 static inline int chkAndCopyTableTokens(Parse *pParse, char *dst, Token *t1,
                                         Token *t2, int error_flag,
-                                        int check_shard, int *table_exists)
+                                        int check_shard, int *table_exists,
+                                        int is_queue)
 {
     int rc;
 
@@ -279,7 +294,7 @@ static inline int chkAndCopyTableTokens(Parse *pParse, char *dst, Token *t1,
         return rc;
 
     if ((rc = chkAndCopyTable(pParse, dst, t1->z, t1->n, error_flag, check_shard,
-                              table_exists))) {
+                              table_exists, is_queue))) {
         return rc;
     }
 
@@ -653,7 +668,7 @@ void comdb2CreateTableCSC2(
 
     if (chkAndCopyTableTokens(pParse, sc->tablename, pName1, pName2,
                               (noErr) ? ERROR_IGNORE : ERROR_ON_TBL_FOUND, 1,
-                              &table_exists))
+                              &table_exists, 0))
         goto out;
 
     if (noErr && table_exists) {
@@ -704,7 +719,7 @@ void comdb2AlterTableCSC2(
         return;
     }
 
-    if (chkAndCopyTableTokens(pParse, sc->tablename, pName1, pName2, 1, 1, 0))
+    if (chkAndCopyTableTokens(pParse, sc->tablename, pName1, pName2, 1, 1, 0, 0))
         goto out;
 
     sc->alteronly = 1;
@@ -750,7 +765,7 @@ void comdb2DropTable(Parse *pParse, SrcList *pName)
     }
 
     Token table = {pName->a[0].zName, strlen(pName->a[0].zName)};
-    if (chkAndCopyTableTokens(pParse, sc->tablename, &table, 0, 1, 1, 0))
+    if (chkAndCopyTableTokens(pParse, sc->tablename, &table, 0, 1, 1, 0, 0))
         goto out;
 
     sc->same_schema = 1;
@@ -783,8 +798,14 @@ static inline void comdb2Rebuild(Parse *pParse, Token* nm, Token* lnm, int opt)
         return;
     }
 
-    if (chkAndCopyTableTokens(pParse, sc->tablename, nm, lnm, 1, 1, 0))
+    int is_queue = OPT_ON(opt, REBUILD_QUEUE);
+
+    if (chkAndCopyTableTokens(pParse, sc->tablename, nm, lnm, 1, 1, 0, is_queue))
         goto out;
+
+    if (is_queue) {
+        sc->type = DBTYPE_QUEUEDB;
+    }
 
     sc->nothrevent = 1;
     sc->live = 1;
@@ -908,7 +929,7 @@ void comdb2Truncate(Parse* pParse, Token* nm, Token* lnm)
         return;
     }
 
-    if (chkAndCopyTableTokens(pParse, sc->tablename, nm, lnm, 1, 1, 0))
+    if (chkAndCopyTableTokens(pParse, sc->tablename, nm, lnm, 1, 1, 0, 0))
         goto out;
 
     sc->fastinit = 1;
@@ -956,7 +977,7 @@ void comdb2RebuildIndex(Parse* pParse, Token* nm, Token* lnm, Token* index, int 
         return;
     }
 
-    if (chkAndCopyTableTokens(pParse, sc->tablename, nm, lnm, 1, 1, 0))
+    if (chkAndCopyTableTokens(pParse, sc->tablename, nm, lnm, 1, 1, 0, 0))
         goto out;
 
     sc->same_schema = 1;
@@ -1026,7 +1047,7 @@ void comdb2RebuildQueue(Parse* pParse, Token* nm, int opt)
     }
 #endif
 
-    comdb2Rebuild(p, nm, 0, REBUILD_ALL + REBUILD_DATA + opt);
+    comdb2Rebuild(p, nm, 0, REBUILD_ALL + REBUILD_DATA + REBUILD_QUEUE + opt);
 }
 
 /********************** STORED PROCEDURES ****************************************/
@@ -1233,7 +1254,7 @@ void comdb2CreatePartition(Parse* pParse, Token* table,
     }
     memset(tp->tablename, '\0', MAXTABLELEN);
     if (table &&
-        chkAndCopyTableTokens(pParse, tp->tablename, table, NULL, 1, 1, 0))
+        chkAndCopyTableTokens(pParse, tp->tablename, table, NULL, 1, 1, 0, 0))
         goto clean_arg;
 
     tp->partition_name = (char*) malloc(MAXTABLELEN);
@@ -1418,7 +1439,7 @@ void comdb2analyze(Parse* pParse, int opt, Token* nm, Token* lnm, int pc)
         if (!tablename)
             goto err;
 
-        if (chkAndCopyTableTokens(pParse, tablename, nm, lnm, 1, 1, 0)) {
+        if (chkAndCopyTableTokens(pParse, tablename, nm, lnm, 1, 1, 0, 0)) {
             free(tablename);
             goto err;
         }
@@ -1470,7 +1491,7 @@ void comdb2analyzeCoverage(Parse* pParse, Token* nm, Token* lnm, int newscale)
     ancov_f->tablename = (char*) malloc(MAXTABLELEN);
     if (!ancov_f->tablename) goto err;
 
-    if (chkAndCopyTableTokens(pParse, ancov_f->tablename, nm, lnm, 1, 1, 0))
+    if (chkAndCopyTableTokens(pParse, ancov_f->tablename, nm, lnm, 1, 1, 0, 0))
         goto clean_arg;
 
     ancov_f->newvalue = newscale;
@@ -1522,7 +1543,7 @@ void comdb2setSkipscan(Parse* pParse, Token* nm, Token* lnm, int enable)
     ancov_f->tablename = (char*) malloc(MAXTABLELEN);
     if (!ancov_f->tablename) goto err;
 
-    if (chkAndCopyTableTokens(pParse, ancov_f->tablename, nm, lnm, 1, 1, 0))
+    if (chkAndCopyTableTokens(pParse, ancov_f->tablename, nm, lnm, 1, 1, 0, 0))
         goto clean_arg;
 
     ancov_f->newvalue = enable;
@@ -1666,7 +1687,7 @@ void comdb2analyzeThreshold(Parse* pParse, Token* nm, Token* lnm, int newthresho
     if (!anthr_f->tablename)
         goto err;
 
-    if (chkAndCopyTableTokens(pParse, anthr_f->tablename, nm, lnm, 1, 1, 0))
+    if (chkAndCopyTableTokens(pParse, anthr_f->tablename, nm, lnm, 1, 1, 0, 0))
         return;
 
     anthr_f->newvalue = newthreshold;
@@ -1726,7 +1747,7 @@ void comdb2setAlias(Parse* pParse, Token* name, Token* url)
     arg->type = BPFUNC_ALIAS;
     alias_f->name = (char*) malloc(MAXTABLELEN);
 
-    if (chkAndCopyTableTokens(pParse, alias_f->name, name, NULL, 0, 1, 0))
+    if (chkAndCopyTableTokens(pParse, alias_f->name, name, NULL, 0, 1, 0, 0))
         goto clean_arg;
 
     assert (*url->z == '\'' || *url->z == '\"');
@@ -1858,7 +1879,7 @@ void comdb2grant(Parse *pParse, int revoke, int permission, Token *nm,
                 goto clean_arg;
             }
         } else if (chkAndCopyTableTokens(pParse, grant->table, nm, lnm, 1, 1,
-                                         0)) {
+                                         0, 0)) {
             goto clean_arg;
         }
     }
@@ -2181,7 +2202,7 @@ void comdb2getAnalyzeCoverage(Parse* pParse, Token *nm, Token *lnm)
     OpFuncSetup stp = {1, colname, &coltype, 256};
     char *tablename = (char*) malloc (MAXTABLELEN);
 
-    if (chkAndCopyTableTokens(pParse, tablename, nm, lnm, 1, 1, 0))
+    if (chkAndCopyTableTokens(pParse, tablename, nm, lnm, 1, 1, 0, 0))
         free(tablename);
     else
         comdb2prepareOpFunc(v, pParse, 0, tablename, &produceAnalyzeCoverage,
@@ -2205,7 +2226,7 @@ void comdb2CreateRangePartition(Parse *pParse, Token *nm, Token *col,
 
     char tblname[MAXTABLELEN];
 
-    if (chkAndCopyTableTokens(pParse, tblname, nm, NULL, 1, 0, 0))
+    if (chkAndCopyTableTokens(pParse, tblname, nm, NULL, 1, 0, 0, 0))
         return;
 
     shard_range_create(pParse, tblname, col, limits);
@@ -2252,7 +2273,7 @@ void comdb2getAnalyzeThreshold(Parse* pParse, Token *nm, Token *lnm)
     OpFuncSetup stp = {1, colname, &coltype, 256};
     char *tablename = (char*) malloc (MAXTABLELEN);
 
-    if (chkAndCopyTableTokens(pParse, tablename, nm, lnm, 1, 1, 0))
+    if (chkAndCopyTableTokens(pParse, tablename, nm, lnm, 1, 1, 0, 0))
         free(tablename);
     else
         comdb2prepareOpFunc(v, pParse, 0, tablename, &produceAnalyzeThreshold,
@@ -2351,7 +2372,7 @@ void comdb2timepartRetention(Parse *pParse, Token *nm, Token *lnm, int retention
         goto err;
 
     if (chkAndCopyTableTokens(pParse, tp_retention->timepartname, nm, lnm, 1, 1,
-                              0))
+                              0, 0))
         goto clean_arg;
 
     tp_retention->newvalue = retention;
@@ -2453,7 +2474,7 @@ void sqlite3AlterRenameTable(Parse *pParse, Token *pSrcName, Token *pName,
         return;
     }
 
-    if (chkAndCopyTableTokens(pParse, sc->tablename, pSrcName, NULL, 1, 1, 0))
+    if (chkAndCopyTableTokens(pParse, sc->tablename, pSrcName, NULL, 1, 1, 0, 0))
         goto out;
 
     comdb2WriteTransaction(pParse);
@@ -4264,7 +4285,7 @@ void comdb2AlterTableStart(
         goto oom;
 
     if ((chkAndCopyTableTokens(pParse, ctx->tablename, pName1, pName2, 1, 0,
-                               0)))
+                               0, 0)))
         goto cleanup;
 
     ctx->schema->name = comdb2_strdup(ctx->mem, ctx->tablename);
@@ -4408,7 +4429,7 @@ void comdb2CreateTableStart(
 
     if (chkAndCopyTableTokens(pParse, ctx->tablename, pName1, pName2,
                               (noErr) ? ERROR_IGNORE : ERROR_ON_TBL_FOUND, 1,
-                              &table_exists))
+                              &table_exists, 0))
         goto cleanup;
 
     ctx->schema->name = comdb2_strdup(ctx->mem, ctx->tablename);
@@ -5305,7 +5326,7 @@ void comdb2CreateIndex(
     }
 
     if ((chkAndCopyTable(pParse, sc->tablename, ctx->schema->name,
-                         strlen(ctx->schema->name), 1, 1, 0)))
+                         strlen(ctx->schema->name), 1, 1, 0, 0)))
         goto cleanup;
 
     /*
@@ -5989,7 +6010,7 @@ void comdb2DropIndex(Parse *pParse, Token *pName1, Token *pName2, int ifExists)
         sqlite3Dequote(tbl_name);
 
         if ((chkAndCopyTable(pParse, sc->tablename, tbl_name, strlen(tbl_name),
-                             1, 1, 0)))
+                             1, 1, 0, 0)))
             goto cleanup;
 
         if (authenticateSC(sc->tablename, pParse))
@@ -6049,7 +6070,7 @@ void comdb2DropIndex(Parse *pParse, Token *pName1, Token *pName2, int ifExists)
         }
 
         if ((chkAndCopyTable(pParse, sc->tablename, table->tablename,
-                             strlen(table->tablename), 1, 1, 0)))
+                             strlen(table->tablename), 1, 1, 0, 0)))
             goto cleanup;
 
         if (authenticateSC(sc->tablename, pParse))
@@ -6441,7 +6462,7 @@ void comdb2SchemachangeControl(Parse *pParse, int action, Token *nm, Token *lnm)
 
     sc->preempted = action;
 
-    if (chkAndCopyTableTokens(pParse, sc->tablename, nm, lnm, 1, 1, 0))
+    if (chkAndCopyTableTokens(pParse, sc->tablename, nm, lnm, 1, 1, 0, 0))
         goto out;
 
     if (authenticateSC(sc->tablename, pParse))
