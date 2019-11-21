@@ -1047,7 +1047,7 @@ void comdb2RebuildQueue(Parse* pParse, Token* nm, int opt)
     }
 #endif
 
-    comdb2Rebuild(p, nm, 0, REBUILD_ALL + REBUILD_DATA + REBUILD_QUEUE + opt);
+    comdb2Rebuild(pParse, nm, 0, REBUILD_ALL + REBUILD_DATA + REBUILD_QUEUE + opt);
 }
 
 /********************** STORED PROCEDURES ****************************************/
