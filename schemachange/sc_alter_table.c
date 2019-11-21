@@ -464,19 +464,21 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
         return -1;
     }
 
-    s->schema_change = changed =
-        prepare_changes(s, db, newdb, &s->plan, &scinfo);
-    if (changed == SC_UNKNOWN_ERROR) {
-        backout(newdb);
-        cleanup_newdb(newdb);
-        sc_errf(s, "Internal error");
-        return SC_INTERNAL_ERROR;
-    }
+    if (!is_queue) {
+        s->schema_change = changed =
+            prepare_changes(s, db, newdb, &s->plan, &scinfo);
+        if (changed == SC_UNKNOWN_ERROR) {
+            backout(newdb);
+            cleanup_newdb(newdb);
+            sc_errf(s, "Internal error");
+            return SC_INTERNAL_ERROR;
+        }
 
-    adjust_version(changed, &scinfo, s, db, newdb);
-    s->schema_change = changed =
-        prepare_sc_plan(s, changed, db, newdb, &s->plan);
-    print_schemachange_info(s, db, newdb);
+        adjust_version(changed, &scinfo, s, db, newdb);
+        s->schema_change = changed =
+            prepare_sc_plan(s, changed, db, newdb, &s->plan);
+        print_schemachange_info(s, db, newdb);
+    }
 
     /*************** open  tables ********************************************/
 
