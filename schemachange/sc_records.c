@@ -1264,6 +1264,11 @@ int convert_all_records(struct dbtable *from, struct dbtable *to,
                         unsigned long long *sc_genids,
                         struct schema_change_type *s)
 {
+    int dtastripe = gbl_dtastripe;
+
+    if (s->type == DBTYPE_QUEUEDB)
+        dtastripe = 1;
+
     struct convert_record_data data = {0};
     int ii;
     s->sc_thd_failed = 0;
@@ -1336,10 +1341,10 @@ int convert_all_records(struct dbtable *from, struct dbtable *to,
     data.cmembers = calloc(1, sizeof(struct common_members));
     int sc_threads =
         bdb_attr_get(data.from->dbenv->bdb_attr, BDB_ATTR_SC_USE_NUM_THREADS);
-    if (sc_threads <= 0 || sc_threads > gbl_dtastripe) {
+    if (sc_threads <= 0 || sc_threads > dtastripe) {
         bdb_attr_set(data.from->dbenv->bdb_attr, BDB_ATTR_SC_USE_NUM_THREADS,
-                     gbl_dtastripe);
-        sc_threads = gbl_dtastripe;
+                     dtastripe);
+        sc_threads = dtastripe;
     }
     data.cmembers->maxthreads = sc_threads;
     data.cmembers->is_decrease_thrds = bdb_attr_get(
@@ -1455,8 +1460,8 @@ int convert_all_records(struct dbtable *from, struct dbtable *to,
         convert_records_thd(&data);
         outrc = data.outrc;
     } else {
-        struct convert_record_data threadData[gbl_dtastripe];
-        int threadSkipped[gbl_dtastripe];
+        struct convert_record_data threadData[dtastripe];
+        int threadSkipped[dtastripe];
         pthread_attr_t attr;
         int rc = 0;
 
@@ -1467,7 +1472,7 @@ int convert_all_records(struct dbtable *from, struct dbtable *to,
         pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
 
         /* start one thread for each stripe */
-        for (ii = 0; ii < gbl_dtastripe; ++ii) {
+        for (ii = 0; ii < dtastripe; ++ii) {
             /* create a copy of the data, modifying the necessary
              * thread specific values
              */
@@ -1504,7 +1509,7 @@ int convert_all_records(struct dbtable *from, struct dbtable *to,
         }
 
         /* wait for all convert threads to complete */
-        for (ii = 0; ii < gbl_dtastripe; ++ii) {
+        for (ii = 0; ii < dtastripe; ++ii) {
             void *ret;
 
             if (threadSkipped[ii]) continue;
