@@ -139,13 +139,16 @@
 
 /*
 ** The maximum value of a ?nnn wildcard that the parser will accept.
+** If the value exceeds 32767 then extra space is required for the Expr
+** structure.  But otherwise, we believe that the number can be as large
+** as a signed 32-bit integer can hold.
 */
 #ifndef SQLITE_MAX_VARIABLE_NUMBER
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
 /* COMPAT: Needs 1024 vars because Oracle has 1000 and DB2 has 1012. */
 # define SQLITE_MAX_VARIABLE_NUMBER 2048
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-# define SQLITE_MAX_VARIABLE_NUMBER 999
+# define SQLITE_MAX_VARIABLE_NUMBER 32766
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 #endif
 

@@ -839,8 +839,8 @@ static int vdbeSorterCompareText(
   int n2;
   int res;
 
-  getVarint32(&p1[1], n1);
-  getVarint32(&p2[1], n2);
+  getVarint32NR(&p1[1], n1);
+  getVarint32NR(&p2[1], n2);
   res = memcmp(v1, v2, (MIN(n1, n2) - 13)/2);
   if( res==0 ){
     res = n1 - n2;
@@ -1818,7 +1818,7 @@ int sqlite3VdbeSorterWrite(
 
   assert( pCsr->eCurType==CURTYPE_SORTER );
   pSorter = pCsr->uc.pSorter;
-  getVarint32((const u8*)&pVal->z[1], t);
+  getVarint32NR((const u8*)&pVal->z[1], t);
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
   if( t==10 || t==11 ){
     /* I need this for interval and datetime */

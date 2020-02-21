@@ -702,6 +702,7 @@ int sqlite3VdbeMemDatetimeAndDatetime(const Mem *first, const Mem *secnd, int op
 int sqlite3VdbeMemDatetimeAndInterval(const Mem *a, const Mem *b, int op, Mem * res);
 int sqlite3VdbeMemIntervalAndDatetime(const Mem *a, const Mem *b, int op, Mem * res);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+int sqlite3VdbeMemFromBtreeZeroOffset(BtCursor*,u32,Mem*);
 void sqlite3VdbeMemRelease(Mem *p);
 int sqlite3VdbeMemFinalize(Mem*, FuncDef*);
 #ifndef SQLITE_OMIT_WINDOWFUNC
