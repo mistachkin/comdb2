@@ -1888,4 +1888,9 @@ REGISTER_TUNABLE("cached_output_buffer_max_bytes",
                  "thread.  (Default: 8 MiB)",
                  TUNABLE_INTEGER, &gbl_cached_output_buffer_max_bytes, 0, NULL,
                  NULL, NULL, NULL);
+
+REGISTER_TUNABLE("queuedb_debug",
+                 "Enable extra diagnostic messages for the queuedb subsystem."
+                 "  (Default: off)", TUNABLE_BOOLEAN, &gbl_debug_queuedb,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 #endif /* _DB_TUNABLES_H */

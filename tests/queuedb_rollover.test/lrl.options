@@ -4,3 +4,4 @@ queuedb_file_threshold 1
 queuedb_file_interval 5000
 logmsg level info
 allow_lua_print 1
+queuedb_debug 1
