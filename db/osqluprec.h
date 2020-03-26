@@ -14,15 +14,19 @@
    limitations under the License.
  */
 
-#ifndef INCLUDED_FSNAP
-#define INCLUDED_FSNAP
+#ifndef _OSQL_UPREC_H_
+#define _OSQL_UPREC_H_
 
-/*FSNAP - hex dump funcs */
-#ifndef __INCLUDED_FSNAP_H___
-#define __INCLUDED_FSNAP_H___
+#include "comdb2.h"
 
-#include <fsnapf.h>
+/* Offload record upgrade statistics */
+void upgrade_records_stats(void);
 
-#endif
+/* Offload upgrade record request. */
+int offload_comm_send_upgrade_records(const dbtable *db,
+                                      unsigned long long genid);
+
+/* Offload upgrade record request. */
+int offload_comm_send_upgrade_record(const char *tbl, unsigned long long genid);
 
 #endif

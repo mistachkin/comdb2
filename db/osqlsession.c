@@ -41,8 +41,6 @@ struct sess_impl {
     bool dispatched : 1; /* Set when session is dispatched to handle_buf */
     bool terminate : 1;  /* Set when this session is about to be terminated */
 
-    uint8_t *buf; /* toblock request buffer */
-
     pthread_mutex_t mtx; /* dispatched/terminate/clients protection */
 };
 
@@ -82,8 +80,6 @@ int osql_sess_close(osql_sess_t **psess, bool is_linked)
     if (sess->tran)
         osql_bplog_close(&sess->tran);
 
-    if ((*psess)->iq)
-        destroy_ireq(thedb, (*psess)->iq);
     _destroy_session(psess);
 
     return 0;
@@ -93,8 +89,9 @@ static void _destroy_session(osql_sess_t **psess)
 {
     osql_sess_t *sess = *psess;
 
-    if (sess->impl->buf)
-        free(sess->impl->buf);
+    if (sess->snap_info)
+        free(sess->snap_info);
+
     Pthread_mutex_destroy(&sess->impl->mtx);
     free(sess);
 
@@ -203,6 +200,7 @@ void osql_sess_reqlogquery(osql_sess_t *sess, struct reqlogger *reqlog)
 int osql_sess_rcvop(unsigned long long rqid, uuid_t uuid, int type, void *data,
                     int datalen, int *found)
 {
+    int client_abort = 0;
     int rc = 0;
     bool is_msg_done = false;
     struct errstat *perr;
@@ -222,6 +220,7 @@ int osql_sess_rcvop(unsigned long long rqid, uuid_t uuid, int type, void *data,
     /* we have received an OSQL_XERR; replicant wants to abort the transaction;
        discard the session and be done */
     if (is_msg_done && perr) {
+        client_abort = 1;
         goto failed_stream;
     }
 
@@ -255,7 +254,7 @@ failed_stream:
     logmsg(LOGMSG_DEBUG, "%s: cancelled transaction\n", __func__);
     osql_sess_close(&sess, true);
 
-    return perr->errval;
+    return (client_abort) ? 0 : perr->errval;
 }
 
 /**
@@ -266,8 +265,7 @@ failed_stream:
  */
 osql_sess_t *osql_sess_create(const char *sql, int sqlen, char *tzname,
                               int type, unsigned long long rqid, uuid_t uuid,
-                              const char *host, uint8_t *buf,
-                              bool is_reorder_on)
+                              const char *host, bool is_reorder_on)
 {
     osql_sess_t *sess = NULL;
     sess_impl_t *impl;
@@ -279,13 +277,15 @@ osql_sess_t *osql_sess_create(const char *sql, int sqlen, char *tzname,
 #endif
 
     /* alloc object */
-    sess = (osql_sess_t *)calloc(sizeof(osql_sess_t) + sizeof(sess_impl_t), 1);
+    sess = (osql_sess_t *)calloc(
+        sizeof(osql_sess_t) + sizeof(sess_impl_t) + sqlen + 1, 1);
     if (!sess) {
         logmsg(LOGMSG_ERROR, "%s:unable to allocate %zu bytes\n", __func__,
                sizeof(*sess));
         return NULL;
     }
     sess->impl = impl = (sess_impl_t *)(sess + 1);
+    sess->sql = (char *)(sess->impl + 1);
 #if DEBUG_REORDER
     uuidstr_t us;
     comdb2uuidstr(uuid, us);
@@ -302,11 +302,11 @@ osql_sess_t *osql_sess_create(const char *sql, int sqlen, char *tzname,
     sess->host = host ? intern(host) : NULL;
     sess->startus = comdb2_time_epochus();
     sess->is_reorder_on = is_reorder_on;
+    strncpy0((char *)sess->sql, sql, sqlen + 1);
     if (tzname)
         strncpy0(sess->tzname, tzname, sizeof(sess->tzname));
 
     sess->impl->clients = 1;
-    sess->impl->buf = buf;
 
     /* create bplog so we can collect ops from sql thread */
     sess->tran = osql_bplog_create(sess->rqid == OSQL_RQID_USE_UUID,
@@ -385,6 +385,8 @@ static int handle_buf_sorese(osql_sess_t *psess)
     sess_impl_t *sess = psess->impl;
     int debug;
     int rc = 0;
+    uint8_t *p_buf = NULL;
+    const uint8_t *p_buf_end = NULL;
 
     debug = debug_this_request(gbl_debug_until);
     if (gbl_who > 0 && gbl_debug) {
@@ -405,8 +407,18 @@ static int handle_buf_sorese(osql_sess_t *psess)
 
     osql_repository_put(psess);
 
-    rc = handle_buf_main(thedb, psess->iq, NULL, NULL, NULL, debug, 0, 0, NULL,
-                         NULL, REQ_OFFLOAD, NULL, 0, 0);
+    /* create the buffer now */
+    /* construct a block transaction */
+    if (osql_bplog_build_sorese_req(&p_buf, &p_buf_end, psess->sql,
+                                    strlen(psess->sql) + 1, psess->tzname,
+                                    psess->type, psess->rqid, psess->uuid)) {
+        logmsg(LOGMSG_ERROR, "bug in code %s:%d", __func__, __LINE__);
+        return rc;
+    }
+
+    rc = handle_buf_main(thedb, NULL, p_buf, p_buf_end, debug,
+                         (char *)psess->host, 0, NULL, psess, REQ_OFFLOAD, NULL,
+                         0, 0);
 
     if (rc) {
         signal_replicant_error(psess->host, psess->rqid, psess->uuid,

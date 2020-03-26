@@ -346,6 +346,9 @@ int gbl_schedule = 0;
 int gbl_init_with_rowlocks = 0;
 int gbl_init_with_genid48 = 1;
 int gbl_init_with_odh = 1;
+int gbl_init_with_queue_odh = 1;
+int gbl_init_with_queue_compr = BDB_COMPRESS_LZ4;
+int gbl_init_with_queue_persistent_seq = 0;
 int gbl_init_with_ipu = 1;
 int gbl_init_with_instant_sc = 1;
 int gbl_init_with_compr = BDB_COMPRESS_CRLE;
@@ -437,10 +440,12 @@ int gbl_enable_cache_internal_nodes = 1;
 int gbl_use_appsock_as_sqlthread = 0;
 int gbl_rep_process_txn_time = 0;
 
-int gbl_osql_verify_retries_max =
-    499; /* how many times we retry osql for verify */
-int gbl_osql_verify_ext_chk =
-    1; /* extended verify-checking after this many failures */
+/* how many times we retry osql for verify */
+int gbl_osql_verify_retries_max = 499;
+
+/* extended verify-checking after this many failures */
+int gbl_osql_verify_ext_chk = 1;
+
 int gbl_test_badwrite_intvl = 0;
 int gbl_test_blob_race = 0;
 int gbl_skip_ratio_trace = 0;
@@ -1299,7 +1304,10 @@ static void *purge_old_files_thread(void *arg)
                     retries++;
                     goto retry;
                 }
-                logmsg(LOGMSG_ERROR, "%s: failed to commit purged file\n", __func__);
+                logmsg(LOGMSG_ERROR,
+                       "%s: failed to commit purged file, "
+                       "rc=%d\n",
+                       __func__, rc);
                 sleep(empty_pause);
                 continue;
             }
@@ -1475,7 +1483,7 @@ void clean_exit(void)
     no_new_requests(thedb);
 
     print_all_time_accounting();
-    wait_for_sc_to_stop("exit");
+    wait_for_sc_to_stop("exit", __func__, __LINE__);
 
     /* let the lower level start advertising high lsns to go non-coherent
        - dont hang the master waiting for sync replication to an exiting
@@ -1517,7 +1525,7 @@ void clean_exit(void)
     ctrace_closelog();
 
     backend_cleanup(thedb);
-    net_cleanup_subnets();
+    net_cleanup();
     cleanup_sqlite_master();
 
     free_sqlite_table(thedb);
@@ -1539,7 +1547,6 @@ void clean_exit(void)
     free(gbl_myhostname);
 
     cleanresources(); // list of lrls
-    clear_portmux_bind_path();
     // TODO: would be nice but other threads need to exit first:
     // comdb2ma_exit();
 
@@ -2089,7 +2096,8 @@ static int llmeta_load_queues(struct dbenv *dbenv)
         /* Add queue the hash. */
         hash_add(dbenv->qdb_hash, tbl);
 
-        rc = bdb_llmeta_get_queue(qnames[i], &config, &ndests, &dests, &bdberr);
+        rc = bdb_llmeta_get_queue(NULL, qnames[i], &config, &ndests, &dests,
+                                  &bdberr);
         if (rc) {
             logmsg(LOGMSG_ERROR, "can't get information for queue \"%s\"\n",
                     qnames[i]);
@@ -2612,10 +2620,6 @@ struct dbenv *newdbenv(char *dbname, char *lrlname)
 
     dbenv->envname = strdup(dbname);
 
-    listc_init(&dbenv->managed_participants,
-               offsetof(struct managed_component, lnk));
-    listc_init(&dbenv->managed_coordinators,
-               offsetof(struct managed_component, lnk));
     Pthread_mutex_init(&dbenv->incoherent_lk, NULL);
 
     /* Initialize the table/queue hashes. */
@@ -2778,7 +2782,8 @@ static int dump_queuedbs(char *dir)
         int bdberr;
         char *name = thedb->qdbs[i]->tablename;
         int rc;
-        rc = bdb_llmeta_get_queue(name, &config, &ndests, &dests, &bdberr);
+        rc =
+            bdb_llmeta_get_queue(NULL, name, &config, &ndests, &dests, &bdberr);
         if (rc) {
             logmsg(LOGMSG_ERROR, "Can't get data for %s: bdberr %d\n",
                    thedb->qdbs[i]->tablename, bdberr);
@@ -3377,7 +3382,7 @@ static int init(int argc, char **argv)
     int stripes, blobstripe;
 
     if (argc < 2) {
-        print_usage_and_exit();
+        print_usage_and_exit(1);
     }
 
     dyns_allow_bools();
@@ -3831,6 +3836,8 @@ static int init(int argc, char **argv)
     if (gbl_init_with_genid48 && gbl_create_mode)
         bdb_genid_set_format(thedb->bdb_env, LLMETA_GENID_48BIT);
 
+    wrlock_schema_lk();
+
     /* open the table */
     if (llmeta_open()) {
         return -1;
@@ -3890,7 +3897,6 @@ static int init(int argc, char **argv)
         /* we would like to open the files under schema lock, so that
            we don't race with a schema change from master (at this point
            environment is opened, but files are not !*/
-        wrlock_schema_lk();
 
         if (llmeta_load_tables(thedb, dbname, NULL)) {
             logmsg(LOGMSG_FATAL, "could not load tables from the low level meta "
@@ -3904,21 +3910,23 @@ static int init(int argc, char **argv)
             unlock_schema_lk();
             return -1;
         }
-        unlock_schema_lk();
 
         if (llmeta_load_queues(thedb)) {
             logmsg(LOGMSG_FATAL, "could not load queues from the low level meta "
                             "table\n");
+            unlock_schema_lk();
             return -1;
         }
 
         if (llmeta_load_lua_sfuncs()) {
             logmsg(LOGMSG_FATAL, "could not load lua funcs from llmeta\n");
+            unlock_schema_lk();
             return -1;
         }
 
         if (llmeta_load_lua_afuncs()) {
             logmsg(LOGMSG_FATAL, "could not load lua aggs from llmeta\n");
+            unlock_schema_lk();
             return -1;
         }
 
@@ -3935,6 +3943,7 @@ static int init(int argc, char **argv)
 
             /* quit successfully */
             logmsg(LOGMSG_INFO, "-exiting.\n");
+            unlock_schema_lk();
             clean_exit();
         }
     }
@@ -3943,6 +3952,7 @@ static int init(int argc, char **argv)
     if (gbl_repoplrl_fname) {
         logmsg(LOGMSG_FATAL, "Repopulate .lrl mode failed. Possible causes: db not "
                         "using llmeta or .lrl file already had table defs\n");
+        unlock_schema_lk();
         return -1;
     }
 
@@ -3956,6 +3966,7 @@ static int init(int argc, char **argv)
         if (!have_all_schemas()) {
             logmsg(LOGMSG_ERROR,
                   "Server-side keyforming not supported - missing schemas\n");
+            unlock_schema_lk();
             return -1;
         }
 
@@ -3971,6 +3982,7 @@ static int init(int argc, char **argv)
             reqhist->wholereq = 1;
         if (rc) {
             logmsg(LOGMSG_FATAL, "History init failed\n");
+            unlock_schema_lk();
             return -1;
         }
     }
@@ -3981,8 +3993,6 @@ static int init(int argc, char **argv)
 
     /* open db engine */
     logmsg(LOGMSG_INFO, "starting backend db engine\n");
-
-    wrlock_schema_lk();
 
     if (backend_open(thedb) != 0) {
         logmsg(LOGMSG_FATAL, "failed to open '%s'\n", dbname);
@@ -4293,7 +4303,7 @@ int throttle_lim = 10000;
 int cpu_throttle_threshold = 100000;
 
 double gbl_cpupercent;
-
+#include <sc_util.h>
 
 void *statthd(void *p)
 {
@@ -4503,7 +4513,7 @@ void *statthd(void *p)
         if (count % 5 == 0)
             update_metrics();
 
-        if (!gbl_schema_change_in_progress) {
+        if (!get_schema_change_in_progress(__func__, __LINE__)) {
             thresh = reqlog_diffstat_thresh();
             if ((thresh > 0) && (count >= thresh)) { /* every thresh-seconds */
                 strbuf *logstr = strbuf_new();
@@ -5465,8 +5475,6 @@ int main(int argc, char **argv)
     register_all_int_switches();
     repl_list_init();
 
-    set_portmux_bind_path(NULL);
-
     gbl_argc = argc;
     gbl_argv = argv;
 
@@ -5843,6 +5851,7 @@ int comdb2_recovery_cleanup(void *dbenv, void *inlsn, int is_master)
     int *file = &(((int *)(inlsn))[0]);
     int *offset = &(((int *)(inlsn))[1]);
     int rc;
+    assert(*file >= 0 && *offset >= 0);
     logmsg(LOGMSG_INFO, "%s starting for [%d:%d] as %s\n", __func__, *file,
            *offset, is_master ? "MASTER" : "REPLICANT");
     rc = truncate_asof_pglogs(thedb->bdb_env, *file, *offset);
