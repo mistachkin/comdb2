@@ -5,7 +5,9 @@ else
 endif
 
 ifeq ($(TEST_TIMEOUT),)
-	export TEST_TIMEOUT=120m
+	export TEST_TIMEOUT=400m
 endif
 
+export DUMPLOCK_ON_TIMEOUT=1
+export CORE_ON_TIMEOUT=1
 export SP_OPTIONS=-s --cdb2cfg $(CDB2_CONFIG) $(DBNAME) default
