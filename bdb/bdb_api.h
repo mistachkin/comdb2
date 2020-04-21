@@ -287,6 +287,12 @@ enum COMPRESS {
     BDB_COMPRESS_LZ4 = 4
 };
 
+enum OPENFLAGS { /* NOTE: For "uint32_t flags" arg to "bdb_open_*()". */
+    BDB_OPEN_NONE = 0x0,
+    BDB_OPEN_ADD_QDB_FILE = 0x1000000,
+    BDB_OPEN_DEL_QDB_FILE = 0x2000000
+};
+
 int bdb_compr2algo(const char *a);
 const char *bdb_algo2compr(int a);
 
@@ -1153,7 +1159,7 @@ int bdb_open_again(bdb_state_type *bdb_handle, int *bdberr);
 int bdb_open_again_tran(bdb_state_type *bdb_state, tran_type *tran,
                         int *bdberr);
 int bdb_open_again_tran_queue(bdb_state_type *bdb_state, tran_type *tran,
-                              unsigned long long qdb_file_ver, int *bdberr);
+                              uint32_t flags, int *bdberr);
 
 /* destroy resources related to bdb_handle.  assumes that bdb_close_only
    was called */

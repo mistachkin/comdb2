@@ -813,12 +813,11 @@ static int close_qdb(struct dbtable *db, tran_type *tran)
     return rc;
 }
 
-static int open_qdb(struct dbtable *db, unsigned long long qdb_file_ver,
-                    tran_type *tran)
+static int open_qdb(struct dbtable *db, uint32_t flags, tran_type *tran)
 {
     int rc, bdberr = 0;
     assert(db->handle != NULL);
-    rc = bdb_open_again_tran_queue(db->handle, tran, qdb_file_ver, &bdberr);
+    rc = bdb_open_again_tran_queue(db->handle, tran, flags, &bdberr);
     if (rc != 0) {
         logmsg(LOGMSG_ERROR,
                "%s: bdb_open_again_tran failed, bdberr %d\n",
@@ -827,8 +826,7 @@ static int open_qdb(struct dbtable *db, unsigned long long qdb_file_ver,
     return rc;
 }
 
-int reopen_qdb(const char *queue_name, unsigned long long qdb_file_ver,
-               tran_type *tran)
+int reopen_qdb(const char *queue_name, uint32_t flags, tran_type *tran)
 {
     struct dbtable *db = getqueuebyname(queue_name);
     if (db == NULL) {
@@ -842,7 +840,7 @@ int reopen_qdb(const char *queue_name, unsigned long long qdb_file_ver,
     paused = 1;
     rc = close_qdb(db, tran);
     if (rc != 0) goto done;
-    rc = open_qdb(db, qdb_file_ver, tran);
+    rc = open_qdb(db, flags, tran);
     if (rc != 0) goto done;
 done:
     BDB_TRIGGER_MAYBE_UNPAUSE(db->handle, paused);
@@ -1009,7 +1007,7 @@ int finalize_add_qdb_file(struct ireq *iq, struct schema_change_type *s,
     if (rc != 0) {
         goto done;
     }
-    rc = open_qdb(s->db, s->qdb_file_ver, sc_phys_tran);
+    rc = open_qdb(s->db, BDB_OPEN_ADD_QDB_FILE, sc_phys_tran);
     if (rc != 0) {
         goto done;
     }
@@ -1078,7 +1076,7 @@ int finalize_del_qdb_file(struct ireq *iq, struct schema_change_type *s,
     if (rc != 0) {
         goto done;
     }
-    rc = open_qdb(s->db, 0, sc_phys_tran);
+    rc = open_qdb(s->db, BDB_OPEN_DEL_QDB_FILE, sc_phys_tran);
     if (rc != 0) {
         goto done;
     }

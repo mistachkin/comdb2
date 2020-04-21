@@ -4157,8 +4157,7 @@ int calc_pagesize(int recsize)
 }
 
 static int open_dbs_int(bdb_state_type *bdb_state, int iammaster, int upgrade,
-                        int create, DB_TXN *tid, uint32_t flags,
-                        unsigned long long qdb_file_ver)
+                        int create, DB_TXN *tid, uint32_t flags)
 {
     int rc;
     char tmpname[PATH_MAX];
@@ -4377,9 +4376,10 @@ deadlock_again:
     }
     if (bdbtype == BDBTYPE_QUEUEDB) {
         int max_qdb_dtanum = create ? 1 : BDB_QUEUEDB_MAX_FILES;
-        assert(!create || (qdb_file_ver == 0));
+        assert(!create || (flags == BDB_OPEN_NONE));
         assert(BDB_QUEUEDB_MAX_FILES == 2); // TODO: Hard-coded for now.
-        if ((max_qdb_dtanum < BDB_QUEUEDB_MAX_FILES) && (qdb_file_ver != 0)) {
+        if ((max_qdb_dtanum < BDB_QUEUEDB_MAX_FILES) &&
+                    (flags & BDB_OPEN_ADD_QDB_FILE)) {
             max_qdb_dtanum++;
         }
         assert(max_qdb_dtanum >= 1);
@@ -4394,10 +4394,6 @@ deadlock_again:
                 char new[PATH_MAX];
                 print(bdb_state, "deleting %s\n", bdb_trans(tmpname, new));
                 unlink(bdb_trans(tmpname, new));
-            } else if ((dtanum > 0) && (qdb_file_ver != 0)) {
-                form_queuedb_name_int(
-                    bdb_state, tmpname, sizeof(tmpname), qdb_file_ver
-                );
             } else {
                 unsigned long long old_qdb_file_ver;
                 if (should_stop_looking_for_queuedb_files(bdb_state, &tran,
@@ -4429,7 +4425,8 @@ deadlock_again:
             }
             int qdb_type = dta_type;
             u_int32_t qdb_flags = db_flags;
-            if ((iammaster) && (dtanum > 0) && (qdb_file_ver != 0)) {
+            if ((iammaster) && (dtanum > 0) &&
+                (flags & BDB_OPEN_ADD_QDB_FILE)) {
                 logmsg(LOGMSG_DEBUG,
                        "open_dbs: file %s (%d) with CREATE flag\n",
                        tmpname, dtanum);
@@ -4760,20 +4757,17 @@ deadlock_again:
 }
 
 static int open_dbs_flags(bdb_state_type *bdb_state, int iammaster, int upgrade,
-                          int create, DB_TXN *tid, uint32_t flags,
-                          unsigned long long qdb_file_ver)
+                          int create, DB_TXN *tid, uint32_t flags)
 {
     int rc = 0;
-    rc = open_dbs_int(bdb_state, iammaster, upgrade, create, tid, flags,
-                      qdb_file_ver);
+    rc = open_dbs_int(bdb_state, iammaster, upgrade, create, tid, flags);
     return rc;
 }
 
 static int open_dbs(bdb_state_type *bdb_state, int iammaster, int upgrade,
-                    int create, DB_TXN *tid, unsigned long long qdb_file_ver)
+                    int create, DB_TXN *tid, uint32_t flags)
 {
-    return open_dbs_flags(bdb_state, iammaster, upgrade, create, tid, 0,
-                          qdb_file_ver);
+    return open_dbs_flags(bdb_state, iammaster, upgrade, create, tid, flags);
 }
 
 static int bdb_create_stripes_int(bdb_state_type *bdb_state, tran_type *tran,
@@ -5534,8 +5528,7 @@ static bdb_state_type *bdb_open_int(
     int numdtafiles, bdb_attr_type *bdb_attr, bdb_callback_type *bdb_callback,
     void *usr_ptr, netinfo_type *netinfo, int upgrade, int create, int *bdberr,
     bdb_state_type *parent_bdb_state, int pagesize_override, bdbtype_t bdbtype,
-    DB_TXN *tid, int temp, char *recoverylsn, uint32_t flags,
-    unsigned long long qdb_file_ver)
+    DB_TXN *tid, int temp, char *recoverylsn, uint32_t flags)
 {
     bdb_state_type *bdb_state;
     int rc;
@@ -6075,8 +6068,7 @@ static bdb_state_type *bdb_open_int(
         /* open our databases as either a client or master */
         bdb_state->bdbtype = bdbtype;
         bdb_state->pagesize_override = pagesize_override;
-        rc = open_dbs_flags(bdb_state, iammaster, upgrade, create, tid, flags,
-                            qdb_file_ver);
+        rc = open_dbs_flags(bdb_state, iammaster, upgrade, create, tid, flags);
         if (rc != 0) {
             if (bdb_state->parent) {
                 free(bdb_state);
@@ -7117,7 +7109,7 @@ int bdb_free_and_replace(bdb_state_type *bdb_state, bdb_state_type *replace,
 
 /* re-open bdb handle as master/client depending on how it used to be */
 int bdb_open_again_tran_int(bdb_state_type *bdb_state, DB_TXN *tid,
-                            unsigned long long qdb_file_ver, int *bdberr)
+                            uint32_t flags, int *bdberr)
 {
     int iammaster;
     int rc;
@@ -7147,7 +7139,7 @@ int bdb_open_again_tran_int(bdb_state_type *bdb_state, DB_TXN *tid,
     else
         iammaster = 0;
 
-    rc = open_dbs(bdb_state, iammaster, 1, 0, tid, qdb_file_ver);
+    rc = open_dbs(bdb_state, iammaster, 1, 0, tid, flags);
     if (rc != 0) {
         logmsg(LOGMSG_ERROR, "upgrade: open_dbs as master failed\n");
         BDB_RELLOCK();
@@ -7210,10 +7202,10 @@ int bdb_open_again_tran(bdb_state_type *bdb_state, tran_type *tran, int *bdberr)
 }
 
 int bdb_open_again_tran_queue(bdb_state_type *bdb_state, tran_type *tran,
-                              unsigned long long qdb_file_ver, int *bdberr)
+                              uint32_t flags, int *bdberr)
 {
     return bdb_open_again_tran_int(bdb_state, tran ? tran->tid : NULL,
-                                   qdb_file_ver, bdberr);
+                                   flags, bdberr);
 }
 
 int bdb_rebuild_done(bdb_state_type *bdb_state)
