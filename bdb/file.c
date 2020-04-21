@@ -136,10 +136,8 @@ int bdb_rename_file(bdb_state_type *bdb_state, DB_TXN *tid, char *oldfile,
                     char *newfile, int *bdberr);
 
 static int bdb_reopen_int(bdb_state_type *bdb_state);
-static int open_dbs(bdb_state_type *, int, int, int, DB_TXN *,
-                    unsigned long long);
-static int open_dbs_flags(bdb_state_type *, int, int, int, DB_TXN *, uint32_t,
-                          unsigned long long);
+static int open_dbs(bdb_state_type *, int, int, int, DB_TXN *, uint32_t);
+static int open_dbs_flags(bdb_state_type *, int, int, int, DB_TXN *, uint32_t);
 static int close_dbs(bdb_state_type *bdb_state);
 static int close_dbs_txn(bdb_state_type *bdb_state, DB_TXN *tid);
 static int close_dbs_flush(bdb_state_type *bdb_state);
@@ -6171,7 +6169,7 @@ bdb_state_type *bdb_open_env(const char name[], const char dir[],
         0,            /* upgrade */
         bdb_attr->createdbs, /* create */
         bdberr, NULL,        /* parent_bdb_handle */
-        0, BDBTYPE_ENV, NULL, 0, recoverlsn, 0, 0);
+        0, BDBTYPE_ENV, NULL, 0, recoverlsn, 0);
 }
 
 bdb_state_type *
@@ -6203,7 +6201,7 @@ bdb_create_tran(const char name[], const char dir[], int lrl, short numix,
                          1,    /* create */
                          bdberr, parent_bdb_handle, 0, BDBTYPE_TABLE, tid, 0,
                          NULL, /* open lite options */
-                         0, 0);
+                         0);
 
         BDB_RELLOCK();
     } else {
@@ -6218,7 +6216,7 @@ bdb_create_tran(const char name[], const char dir[], int lrl, short numix,
                          1,    /* create */
                          bdberr, parent_bdb_handle, 0, BDBTYPE_TABLE, NULL, 1,
                          NULL, /* open lite options */
-                         0, 0);
+                         0);
     }
 
     return ret;
@@ -6247,7 +6245,7 @@ bdb_open_more_int(const char name[], const char dir[], int lrl, short numix,
                        0,                                  /* upgrade */
                        parent_bdb_handle->attr->createdbs, /* create */
                        bdberr, parent_bdb_handle, 0, /* pagesize override */
-                       BDBTYPE_TABLE, NULL, 0, NULL, 0, 0);
+                       BDBTYPE_TABLE, NULL, 0, NULL, 0);
 
     return ret;
 }
@@ -6290,7 +6288,7 @@ bdb_open_more(const char name[], const char dir[], int lrl, short numix,
                        0,                                  /* upgrade */
                        parent_bdb_handle->attr->createdbs, /* create */
                        bdberr, parent_bdb_handle, 0, /* pagesize override */
-                       BDBTYPE_TABLE, NULL, 0, NULL, 0, 0);
+                       BDBTYPE_TABLE, NULL, 0, NULL, 0);
 
     BDB_RELLOCK();
 
@@ -6324,8 +6322,7 @@ bdb_open_more_tran(const char name[], const char dir[], int lrl, short numix,
                        parent_bdb_handle->attr->createdbs, /* create */
 
                        bdberr, parent_bdb_handle, 0, /* pagesize override */
-                       BDBTYPE_TABLE, tran ? tran->tid : NULL, 0, NULL, flags,
-                       0);
+                       BDBTYPE_TABLE, tran ? tran->tid : NULL, 0, NULL, flags);
 
     BDB_RELLOCK();
 
@@ -6377,7 +6374,7 @@ bdb_state_type *bdb_open_more_lite(const char name[], const char dir[], int lrl,
                        0,                                  /* upgrade */
                        parent_bdb_handle->attr->createdbs, /* create */
                        bdberr, parent_bdb_handle, pagesize, BDBTYPE_LITE,
-                       tran ? tran->tid : NULL, 0, NULL, flags, 0);
+                       tran ? tran->tid : NULL, 0, NULL, flags);
 
     BDB_RELLOCK();
 
@@ -6415,7 +6412,7 @@ bdb_state_type *bdb_open_more_queue(const char name[], const char dir[],
                      parent_bdb_state->attr->createdbs,  /* create */
                      bdberr, parent_bdb_state, pagesize, /* pagesize override */
                      isqueuedb ? BDBTYPE_QUEUEDB : BDBTYPE_QUEUE,
-                     tran ? tran->tid : NULL, 0, NULL, 0, 0);
+                     tran ? tran->tid : NULL, 0, NULL, 0);
 
     BDB_RELLOCK();
 
@@ -6454,7 +6451,7 @@ bdb_state_type *bdb_create_queue_tran(tran_type *tran, const char name[],
         0,                    /* upgrade */
         1,                    /* create */
         bdberr, parent_bdb_state, pagesize, /* pagesize override */
-        isqueuedb ? BDBTYPE_QUEUEDB : BDBTYPE_QUEUE, tid, 0, NULL, 0, 0);
+        isqueuedb ? BDBTYPE_QUEUEDB : BDBTYPE_QUEUE, tid, 0, NULL, 0);
 
     BDB_RELLOCK();
 
@@ -6507,7 +6504,7 @@ bdb_state_type *bdb_create_more_lite(const char name[], const char dir[],
                          0,                                /* upgrade */
                          1,                                /* create */
                          bdberr, parent_bdb_handle, pagesize, BDBTYPE_LITE,
-                         NULL, 0, NULL, 0, 0);
+                         NULL, 0, NULL, 0);
     }
 
     BDB_RELLOCK();
