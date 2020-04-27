@@ -923,7 +923,7 @@ static int lua_trigger_impl(Lua L, dbconsumer_t *q)
     }
     sql_set_sqlengine_state(clnt, __FILE__, __LINE__,
                             SQLENG_INTRANS_STATE);
-    rc = grab_qdb_table_read_lock(clnt, q->iq.usedb, NULL, 0, NULL);
+    rc = grab_qdb_table_read_lock(clnt, q->iq.usedb, &q->info, 0, NULL);
     if (rc != 0) {
         return rc;
     }
@@ -948,7 +948,7 @@ static int lua_consumer_impl(Lua L, dbconsumer_t *q)
         }
         clnt->intrans = 1;
     }
-    if ((rc = grab_qdb_table_read_lock(clnt, q->iq.usedb, NULL, 0, NULL)) != 0) {
+    if ((rc = grab_qdb_table_read_lock(clnt, q->iq.usedb, &q->info, 0, NULL)) != 0) {
         if (start) {
             osql_sock_abort(clnt, OSQL_SOCK_REQ);
             clnt->intrans = 0;
