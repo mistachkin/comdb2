@@ -708,7 +708,7 @@ char *sp_column_name(struct response_data *arg, int col)
 
 static int grab_qdb_table_read_lock(struct sqlclntstate *clnt,
                                     struct dbtable *db, trigger_reg_t *reg,
-                                    int have_schema_lock)
+                                    int have_schema_lock, int *got_lock)
 {
     if (!gbl_queuedb_read_locks) return 0;
     if ((reg != NULL) && reg->qdb_locked) {
@@ -723,8 +723,9 @@ static int grab_qdb_table_read_lock(struct sqlclntstate *clnt,
     if (rc != 0) {
         logmsg(LOGMSG_ERROR, "%s: bdb_lock_table_read_fromlid rc %d\n",
                __func__, rc);
-    } else if (reg != NULL) {
-        reg->qdb_locked = 1;
+    } else {
+        if (reg != NULL) reg->qdb_locked = 1;
+        if (got_lock != NULL) *got_lock = 1;
     }
     if (!have_schema_lock) unlock_schema_lk();
     return rc;
@@ -740,7 +741,7 @@ static int dbq_poll_int(Lua L, dbconsumer_t *q)
     SP sp = getsp(L);
     struct sqlclntstate *clnt = sp->clnt;
     struct qfound f = {0};
-    int rc = grab_qdb_table_read_lock(clnt, q->iq.usedb, &q->info, 0);
+    int rc = grab_qdb_table_read_lock(clnt, q->iq.usedb, &q->info, 0, NULL);
     if (rc != 0) {
         // TODO: Temporary hack for testing.
         //       Transform -2 (schema lock fail) to 0 (success).
@@ -922,7 +923,7 @@ static int lua_trigger_impl(Lua L, dbconsumer_t *q)
     }
     sql_set_sqlengine_state(clnt, __FILE__, __LINE__,
                             SQLENG_INTRANS_STATE);
-    rc = grab_qdb_table_read_lock(clnt, q->iq.usedb, NULL, 0);
+    rc = grab_qdb_table_read_lock(clnt, q->iq.usedb, NULL, 0, NULL);
     if (rc != 0) {
         return rc;
     }
@@ -947,7 +948,7 @@ static int lua_consumer_impl(Lua L, dbconsumer_t *q)
         }
         clnt->intrans = 1;
     }
-    if ((rc = grab_qdb_table_read_lock(clnt, q->iq.usedb, NULL, 0)) != 0) {
+    if ((rc = grab_qdb_table_read_lock(clnt, q->iq.usedb, NULL, 0, NULL)) != 0) {
         if (start) {
             osql_sock_abort(clnt, OSQL_SOCK_REQ);
             clnt->intrans = 0;
@@ -4655,7 +4656,7 @@ void force_unregister(Lua L, trigger_reg_t *reg)
 }
 
 static int get_qdb(Lua L, struct sqlclntstate *clnt, char *spname,
-                   struct dbtable **pDb, char **err)
+                   struct dbtable **pDb, int *got_lock, char **err)
 {
     Q4SP(qname, spname);
     rdlock_schema_lk();
@@ -4670,7 +4671,7 @@ static int get_qdb(Lua L, struct sqlclntstate *clnt, char *spname,
             return luaL_error(L, "trigger not found for sp:%s", spname);
         }
     }
-    int rc = grab_qdb_table_read_lock(clnt, db, NULL, 1);
+    int rc = grab_qdb_table_read_lock(clnt, db, NULL, 1, got_lock);
     if (rc != 0) {
         *pDb = NULL;
         unlock_schema_lk();
@@ -4708,8 +4709,9 @@ static int db_consumer(Lua L)
         return 0;
     }
     struct dbtable *db = NULL;
+    int got_lock = 0;
 
-    int rc = get_qdb(L, clnt, sp->spname, &db, NULL);
+    int rc = get_qdb(L, clnt, sp->spname, &db, &got_lock, NULL);
     if (rc != 0) {
         return rc;
     }
@@ -4722,7 +4724,7 @@ static int db_consumer(Lua L)
     enum consumer_t type = dbqueue_consumer_type(consumer);
     trigger_reg_t *t;
     if (type == CONSUMER_TYPE_DYNLUA) {
-        trigger_reg_init(t, sp->spname, gbl_queuedb_read_locks);
+        trigger_reg_init(t, sp->spname, got_lock);
         ctrace("consumer:%s %016" PRIx64 " register req\n", t->spname, t->trigger_cookie);
         rc = luabb_trigger_register(L, t, register_timeoutms);
         if (rc != CDB2_TRIG_REQ_SUCCESS) {
@@ -6771,7 +6773,7 @@ static int setup_sp_for_trigger(trigger_reg_t *reg, char **err,
 
     struct dbtable *db = NULL;
 
-    rc = get_qdb(L, clnt, reg->spname, &db, err);
+    rc = get_qdb(L, clnt, reg->spname, &db, NULL, err);
     if (rc != 0) {
         return rc;
     }
