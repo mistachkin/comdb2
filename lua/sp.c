@@ -471,7 +471,7 @@ static int luabb_trigger_register(Lua L, trigger_reg_t *reg,
             }
             --retry;
         }
-        if (check_retry_conditions(L, reg, 1) != 0) {
+        if (check_retry_conditions(L, NULL, 1) != 0) {
             rc = luabb_error(L, sp, sp->error);
             goto out;
         }
@@ -503,7 +503,7 @@ static void luabb_trigger_unregister(Lua L, dbconsumer_t *q)
         if (rc == CDB2_TRIG_REQ_SUCCESS || rc == CDB2_TRIG_ASSIGNED_OTHER)
             return;
         if (L)
-            check_retry_conditions(L, &q->info, 1);
+            check_retry_conditions(L, NULL, 1);
         sleep(1);
     }
 }
