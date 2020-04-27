@@ -922,7 +922,7 @@ static int lua_trigger_impl(Lua L, dbconsumer_t *q)
     }
     sql_set_sqlengine_state(clnt, __FILE__, __LINE__,
                             SQLENG_INTRANS_STATE);
-    rc = grab_qdb_table_read_lock(clnt, q->iq.usedb, &q->info, 0);
+    rc = grab_qdb_table_read_lock(clnt, q->iq.usedb, NULL, 0);
     if (rc != 0) {
         return rc;
     }
@@ -947,7 +947,7 @@ static int lua_consumer_impl(Lua L, dbconsumer_t *q)
         }
         clnt->intrans = 1;
     }
-    if ((rc = grab_qdb_table_read_lock(clnt, q->iq.usedb, &q->info, 0)) != 0) {
+    if ((rc = grab_qdb_table_read_lock(clnt, q->iq.usedb, NULL, 0)) != 0) {
         if (start) {
             osql_sock_abort(clnt, OSQL_SOCK_REQ);
             clnt->intrans = 0;
@@ -4655,7 +4655,7 @@ void force_unregister(Lua L, trigger_reg_t *reg)
 }
 
 static int get_qdb(Lua L, struct sqlclntstate *clnt, char *spname,
-                   struct dbtable **pDb, trigger_reg_t *reg, char **err)
+                   struct dbtable **pDb, char **err)
 {
     Q4SP(qname, spname);
     rdlock_schema_lk();
@@ -4670,7 +4670,7 @@ static int get_qdb(Lua L, struct sqlclntstate *clnt, char *spname,
             return luaL_error(L, "trigger not found for sp:%s", spname);
         }
     }
-    int rc = grab_qdb_table_read_lock(clnt, db, reg, 1);
+    int rc = grab_qdb_table_read_lock(clnt, db, NULL, 1);
     if (rc != 0) {
         *pDb = NULL;
         unlock_schema_lk();
@@ -4709,7 +4709,7 @@ static int db_consumer(Lua L)
     }
     struct dbtable *db = NULL;
 
-    int rc = get_qdb(L, clnt, sp->spname, &db, NULL, NULL);
+    int rc = get_qdb(L, clnt, sp->spname, &db, NULL);
     if (rc != 0) {
         return rc;
     }
@@ -6771,7 +6771,7 @@ static int setup_sp_for_trigger(trigger_reg_t *reg, char **err,
 
     struct dbtable *db = NULL;
 
-    rc = get_qdb(L, clnt, reg->spname, &db, reg, err);
+    rc = get_qdb(L, clnt, reg->spname, &db, err);
     if (rc != 0) {
         return rc;
     }
