@@ -164,7 +164,7 @@ struct dbconsumer_t {
     /* signaling from libdb on qdb insert */
     pthread_mutex_t *lock;
     pthread_cond_t *cond;
-    const uint8_t *status;
+    const uint8_t *open;
     trigger_reg_t info; // must be last in struct
 };
 
@@ -202,7 +202,7 @@ static int setup_dbconsumer(dbconsumer_t *q, struct consumer *consumer,
     // memcpy because variable size struct breaks fortify checks in strcpy.
     memcpy(q->info.spname, info->spname, spname_len + 1);
     strcpy(q->info.spname + spname_len + 1, info->spname + spname_len + 1);
-    return bdb_trigger_subscribe(qdb->handle, &q->cond, &q->lock, &q->status);
+    return bdb_trigger_subscribe(qdb->handle, &q->cond, &q->lock, &q->open);
 }
 
 static int db_emiterror(lua_State *lua);
@@ -489,7 +489,7 @@ static void luabb_trigger_unregister(Lua L, dbconsumer_t *q)
 {
     if (q->lock) {
         Pthread_mutex_lock(q->lock);
-        if (*q->status != TRIGGER_SUBSCRIPTION_CLOSED) {
+        if (*q->open) {
             bdb_trigger_unsubscribe(q->iq.usedb->handle);
         }
         Pthread_mutex_unlock(q->lock);
@@ -738,10 +738,8 @@ static int dbq_poll_int(Lua L, dbconsumer_t *q)
     struct qfound f = {0};
     int rc = grab_qdb_table_read_lock(clnt, q->iq.usedb, &q->info, 0, NULL);
     if (rc != 0) {
-        // TODO: Temporary hack for testing.
-        //       Transform -2 (schema lock fail) to 0 (success).
         Pthread_mutex_unlock(q->lock);
-        return rc == -2 ? 0 : -1;
+        return -1;
     }
     rc = dbq_get(&q->iq, 0, &q->last, &f.item, &f.len, &f.dtaoff, &q->fnd,
                  &f.seq, &f.epoch);
@@ -776,18 +774,9 @@ static int dbq_poll(Lua L, dbconsumer_t *q, int delay)
         uint8_t status;
         struct timespec ts;
         Pthread_mutex_lock(q->lock);
-again:  status = *q->status;
-        if (status == TRIGGER_SUBSCRIPTION_OPEN) {
+again:  if (*q->open) {
             rc = dbq_poll_int(L, q); // call will release q->lock
-        } else if (status == TRIGGER_SUBSCRIPTION_PAUSED) {
-            if (stop_waiting(L, q)) {
-                return -1;
-            }
-            setup_dbq_ts(ts);
-            pthread_cond_timedwait(q->cond, q->lock, &ts); /* RC IGNORED */
-            goto again;
         } else {
-            assert(status == TRIGGER_SUBSCRIPTION_CLOSED);
             Pthread_mutex_unlock(q->lock);
             rc = -2;
         }

@@ -28,18 +28,6 @@
     }                                                                         \
 } while (0);
 
-#define BDB_TRIGGER_MAYBE_UNPAUSE(a,b) do {                                   \
-    if (((a) != NULL) && (b)) {                                               \
-        int rc3 = bdb_trigger_unpause((a));                                   \
-        if (rc3 == 0) {                                                       \
-            (b) = 0;                                                          \
-        } else {                                                              \
-            logmsg(LOGMSG_ERROR, "%s: bdb_trigger_unpause rc = %d\n",         \
-                   __func__, rc3);                                            \
-        }                                                                     \
-    }                                                                         \
-} while (0);
-
 extern int dbqueue_add_consumer(struct dbtable *db, int consumern,
                                 const char *method, int noremove);
 
@@ -848,16 +836,12 @@ int reopen_qdb(const char *queue_name, uint32_t flags, tran_type *tran)
                queue_name);
         return -1;
     }
-    int rc, paused = 0;
-    rc = bdb_trigger_pause(db->handle);
-    if (rc != 0) goto done;
-    paused = 1;
+    int rc;
     rc = close_qdb(db, tran);
     if (rc != 0) goto done;
     rc = open_qdb(db, flags, tran);
     if (rc != 0) goto done;
 done:
-    BDB_TRIGGER_MAYBE_UNPAUSE(db->handle, paused);
     return rc;
 }
 
@@ -986,7 +970,7 @@ int do_add_qdb_file(struct ireq *iq, struct schema_change_type *s,
 int finalize_add_qdb_file(struct ireq *iq, struct schema_change_type *s,
                           tran_type *tran)
 {
-    int rc, paused = 0, bdberr;
+    int rc, bdberr;
     tran_type *sc_logical_tran = NULL;
     tran_type *sc_phys_tran = NULL;
 
@@ -1006,11 +990,6 @@ int finalize_add_qdb_file(struct ireq *iq, struct schema_change_type *s,
     if (rc != 0) {
         goto done;
     }
-    rc = bdb_trigger_pause(s->db->handle);
-    if (rc != 0) {
-        goto done;
-    }
-    paused = 1;
     rc = close_qdb(s->db, sc_phys_tran);
     if (rc != 0) {
         goto done;
@@ -1039,7 +1018,6 @@ int finalize_add_qdb_file(struct ireq *iq, struct schema_change_type *s,
     }
     logmsg(LOGMSG_INFO, "%s SUCCESS\n", __func__);
 done:
-    BDB_TRIGGER_MAYBE_UNPAUSE(s->db->handle, paused);
     BDB_TRAN_MAYBE_ABORT_OR_FATAL(s->db->handle, sc_logical_tran, bdberr);
     return rc;
 }
@@ -1053,7 +1031,7 @@ int do_del_qdb_file(struct ireq *iq, struct schema_change_type *s,
 int finalize_del_qdb_file(struct ireq *iq, struct schema_change_type *s,
                           tran_type *tran)
 {
-    int rc, paused = 0, bdberr;
+    int rc, bdberr;
     tran_type *sc_logical_tran = NULL;
     tran_type *sc_phys_tran = NULL;
 
@@ -1073,11 +1051,6 @@ int finalize_del_qdb_file(struct ireq *iq, struct schema_change_type *s,
     if (rc != 0) {
         goto done;
     }
-    rc = bdb_trigger_pause(s->db->handle);
-    if (rc != 0) {
-        goto done;
-    }
-    paused = 1;
     rc = close_qdb(s->db, sc_phys_tran);
     if (rc != 0) {
         goto done;
@@ -1106,7 +1079,6 @@ int finalize_del_qdb_file(struct ireq *iq, struct schema_change_type *s,
     }
     logmsg(LOGMSG_INFO, "%s SUCCESS\n", __func__);
 done:
-    BDB_TRIGGER_MAYBE_UNPAUSE(s->db->handle, paused);
     BDB_TRAN_MAYBE_ABORT_OR_FATAL(s->db->handle, sc_logical_tran, bdberr);
     return rc;
 }

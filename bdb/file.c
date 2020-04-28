@@ -1358,9 +1358,7 @@ static int close_dbs_int(bdb_state_type *bdb_state, DB_TXN *tid, int flags)
     }
 
     if (bdb_state->bdbtype == BDBTYPE_QUEUEDB) {
-        if (!bdb_trigger_ispaused(bdb_state)) {
-            bdb_trigger_close(bdb_state);
-        }
+        bdb_trigger_close(bdb_state);
     }
 
     for (dtanum = 0; dtanum < MAXDTAFILES; dtanum++) {
@@ -6113,9 +6111,7 @@ static bdb_state_type *bdb_open_int(
     bdb_state->isopen = 1;
 
     if (bdbtype == BDBTYPE_QUEUEDB) {
-        if (!bdb_trigger_ispaused(bdb_state)) {
-            bdb_trigger_open(bdb_state);
-        }
+        bdb_trigger_open(bdb_state);
     }
 
     if (bdb_state->attr->dtastripe && (!bdb_state->attr->genids)) {
