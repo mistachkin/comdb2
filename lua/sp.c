@@ -72,7 +72,6 @@
 
 #endif
 
-extern int gbl_queuedb_read_locks;
 extern int gbl_dump_sql_dispatched; /* dump all sql strings dispatched */
 extern int gbl_return_long_column_names;
 extern int gbl_max_sqlcache;
@@ -710,7 +709,6 @@ static int grab_qdb_table_read_lock(struct sqlclntstate *clnt,
                                     struct dbtable *db, trigger_reg_t *reg,
                                     int have_schema_lock, int *got_lock)
 {
-    if (!gbl_queuedb_read_locks) return 0;
     if ((reg != NULL) && reg->qdb_locked) {
         return 0; /* we already have the table read lock */
     }
