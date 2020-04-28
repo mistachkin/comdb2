@@ -712,10 +712,7 @@ static int grab_qdb_table_read_lock(struct sqlclntstate *clnt,
     if ((reg != NULL) && reg->qdb_locked) {
         return 0; /* we already have the table read lock */
     }
-    if (!have_schema_lock && (tryrdlock_schema_lk() != 0)) {
-        logmsg(LOGMSG_WARN, "%s: tryrdlock_schema_lk failed\n", __func__);
-        return -2;
-    }
+    if (!have_schema_lock) rdlock_schema_lk();
     int rc = bdb_lock_table_read_fromlid(db->handle,
              bdb_get_lid_from_cursortran(clnt->dbtran.cursor_tran));
     if (rc != 0) {
