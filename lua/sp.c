@@ -771,7 +771,6 @@ static int dbq_poll(Lua L, dbconsumer_t *q, int delay)
             return -1;
         }
         int rc;
-        uint8_t status;
         struct timespec ts;
         Pthread_mutex_lock(q->lock);
 again:  if (*q->open) {
