@@ -4376,10 +4376,6 @@ deadlock_again:
         int max_qdb_dtanum = create ? 1 : BDB_QUEUEDB_MAX_FILES;
         assert(!create || (flags == BDB_OPEN_NONE));
         assert(BDB_QUEUEDB_MAX_FILES == 2); // TODO: Hard-coded for now.
-        if ((max_qdb_dtanum < BDB_QUEUEDB_MAX_FILES) &&
-                    (flags & BDB_OPEN_ADD_QDB_FILE)) {
-            max_qdb_dtanum++;
-        }
         assert(max_qdb_dtanum >= 1);
         assert(max_qdb_dtanum <= BDB_QUEUEDB_MAX_FILES);
         for (int dtanum = 0; dtanum < max_qdb_dtanum; dtanum++) {
