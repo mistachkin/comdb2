@@ -974,9 +974,9 @@ int finalize_add_qdb_file(struct ireq *iq, struct schema_change_type *s,
     tran_type *sc_logical_tran = NULL;
     tran_type *sc_phys_tran = NULL;
 
-    rc = trans_start_logical_sc(iq, &sc_logical_tran);
+    rc = trans_start_logical_sc_with_force(iq, &sc_logical_tran);
     if (rc) {
-        logmsg(LOGMSG_ERROR, "%s: trans_start_logical_sc rc %d\n",
+        logmsg(LOGMSG_ERROR, "%s: trans_start_logical_sc_with_force rc %d\n",
                __func__, rc);
         goto done;
     }
@@ -984,6 +984,7 @@ int finalize_add_qdb_file(struct ireq *iq, struct schema_change_type *s,
     if ((sc_phys_tran = bdb_get_physical_tran(sc_logical_tran)) == NULL) {
         logmsg(LOGMSG_ERROR, "%s: bdb_get_physical_tran returns NULL\n",
                __func__);
+        rc = SC_FAILED_TRANSACTION;
         goto done;
     }
     rc = bdb_lock_table_write(s->db->handle, sc_phys_tran);
@@ -1035,9 +1036,9 @@ int finalize_del_qdb_file(struct ireq *iq, struct schema_change_type *s,
     tran_type *sc_logical_tran = NULL;
     tran_type *sc_phys_tran = NULL;
 
-    rc = trans_start_logical_sc(iq, &sc_logical_tran);
+    rc = trans_start_logical_sc_with_force(iq, &sc_logical_tran);
     if (rc) {
-        logmsg(LOGMSG_ERROR, "%s: trans_start_logical_sc rc %d\n",
+        logmsg(LOGMSG_ERROR, "%s: trans_start_logical_sc_with_force rc %d\n",
                __func__, rc);
         goto done;
     }
@@ -1045,6 +1046,7 @@ int finalize_del_qdb_file(struct ireq *iq, struct schema_change_type *s,
     if ((sc_phys_tran = bdb_get_physical_tran(sc_logical_tran)) == NULL) {
         logmsg(LOGMSG_ERROR, "%s: bdb_get_physical_tran returns NULL\n",
                __func__);
+        rc = SC_FAILED_TRANSACTION;
         goto done;
     }
     rc = bdb_lock_table_write(s->db->handle, sc_phys_tran);
