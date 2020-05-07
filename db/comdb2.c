@@ -299,10 +299,9 @@ int gbl_report = 0;           /* update rate to log */
 int gbl_report_last;
 long gbl_report_last_n;
 long gbl_report_last_r;
-char *gbl_mynode;     /* my hostname */
+char *gbl_myhostname;      /* my hostname */
 struct in_addr gbl_myaddr; /* my IPV4 address */
 int gbl_mynodeid = 0; /* node number, for backwards compatibility */
-char *gbl_myhostname; /* added for now to merge fdb source id */
 pid_t gbl_mypid;      /* my pid */
 char *gbl_myuri;      /* added for fdb uri for this db: dbname@hostname */
 int gbl_myroom;
@@ -1120,7 +1119,7 @@ static void *purge_old_blkseq_thread(void *arg)
             ++loop;
 
         if (debug_switch_check_for_hung_checkpoint_thread() &&
-            dbenv->master == gbl_mynode) {
+            dbenv->master == gbl_myhostname) {
             int chkpoint_time = bdb_get_checkpoint_time(dbenv->bdb_env);
             if (gbl_chkpoint_alarm_time > 0 &&
                 chkpoint_time > gbl_chkpoint_alarm_time) {
@@ -1143,7 +1142,7 @@ static void *purge_old_blkseq_thread(void *arg)
             }
         }
 
-        if (dbenv->master == gbl_mynode) {
+        if (dbenv->master == gbl_myhostname) {
             static int last_incoh_msg_time = 0;
             static int peak_online_count = 0;
             int num_incoh, since_epoch;
@@ -1259,7 +1258,7 @@ static void *purge_old_files_thread(void *arg)
     while (!db_is_stopped()) {
         /* even though we only add files to be deleted on the master,
          * don't try to delete files, ever, if you're a replicant */
-        if (thedb->master != gbl_mynode) {
+        if (thedb->master != gbl_myhostname) {
             sleep(empty_pause);
             continue;
         }
@@ -1298,7 +1297,7 @@ static void *purge_old_files_thread(void *arg)
         }
 
         if (rc == 0) {
-            rc = trans_commit(&iq, trans, gbl_mynode);
+            rc = trans_commit(&iq, trans, gbl_myhostname);
             if (rc) {
                 if (rc == RC_INTERNAL_RETRY && retries < 10) {
                     retries++;
@@ -1544,7 +1543,6 @@ void clean_exit(void)
     cleanup_interned_strings();
     cleanup_peer_hash();
     free(gbl_dbdir);
-    free(gbl_myhostname);
 
     cleanresources(); // list of lrls
     // TODO: would be nice but other threads need to exit first:
@@ -1868,7 +1866,6 @@ size_t gbl_lkr_parts = 23;
 size_t gbl_lk_hash = 32;
 size_t gbl_lkr_hash = 16;
 
-char **qdbs = NULL;
 char **sfuncs = NULL;
 char **afuncs = NULL;
 
@@ -1988,7 +1985,7 @@ int llmeta_load_tables_older_versions(struct dbenv *dbenv, void *tran)
         return 0;
 
     /* re-load the tables from the low level metatable */
-    if (bdb_llmeta_get_tables(tran, tblnames, dbnums, sizeof(tblnames),
+    if (bdb_llmeta_get_tables(tran, tblnames, dbnums, MAX_NUM_TABLES,
                               &fndnumtbls, &bdberr) ||
         bdberr != BDBERR_NOERROR) {
         logmsg(LOGMSG_ERROR, "couldn't load tables from low level meta table"
@@ -2192,7 +2189,7 @@ static int llmeta_load_tables(struct dbenv *dbenv, char *dbname, void *tran)
     dbtable *tbl;
 
     /* load the tables from the low level metatable */
-    if (bdb_llmeta_get_tables(tran, tblnames, dbnums, sizeof(tblnames),
+    if (bdb_llmeta_get_tables(tran, tblnames, dbnums, MAX_NUM_TABLES,
                               &fndnumtbls, &bdberr) ||
         bdberr != BDBERR_NOERROR) {
         logmsg(LOGMSG_ERROR, "couldn't load tables from low level meta table"
@@ -3220,16 +3217,6 @@ static int init_db_dir(char *dbname, char *dir)
     return 0;
 }
 
-static int llmeta_set_qdbs(void)
-{
-    int rc = 0;
-    for (int i = 0; i != thedb->num_qdbs; ++i) {
-        if ((rc = llmeta_set_qdb(qdbs[i])) != 0)
-            break;
-    }
-    return rc;
-}
-
 static int init_sqlite_table(struct dbenv *dbenv, char *table)
 {
     int rc;
@@ -3478,7 +3465,7 @@ static int init(int argc, char **argv)
         cacheszkb = atoi(argv[optind]);
     }
 
-    gbl_mynodeid = machine_num(gbl_mynode);
+    gbl_mynodeid = machine_num(gbl_myhostname);
 
     Pthread_attr_init(&gbl_pthread_attr);
     Pthread_attr_setstacksize(&gbl_pthread_attr, DEFAULT_THD_STACKSZ);
@@ -3744,7 +3731,7 @@ static int init(int argc, char **argv)
     if (rc)
         return -1;
 
-    gbl_myroom = getroom_callback(NULL, gbl_mynode);
+    gbl_myroom = getroom_callback(NULL, gbl_myhostname);
 
     if (skip_clear_queue_extents) {
         logmsg(LOGMSG_INFO, "skipping clear_queue_extents()\n");
@@ -4067,11 +4054,6 @@ static int init(int argc, char **argv)
                 logmsg(LOGMSG_FATAL, "Failed to create time partitions!\n");
                 return -1;
             }
-        }
-
-        if (llmeta_set_qdbs() != 0) {
-            logmsg(LOGMSG_FATAL, "failed to add queuedbs to llmeta\n");
-            return -1;
         }
 
         llmeta_set_lua_funcs(s);
@@ -5291,16 +5273,15 @@ static void register_all_int_switches()
 static void getmyid(void)
 {
     char name[1024];
+    char *cname;
 
     if (gethostname(name, sizeof(name))) {
         logmsg(LOGMSG_ERROR, "%s: Failure to get local hostname!!!\n", __func__);
-        gbl_myhostname = "UNKNOWN";
-        gbl_mynode = "localhost";
+        gbl_myhostname = "localhost";
+    } else if ((cname = comdb2_getcanonicalname(name)) != NULL) {
+        gbl_myhostname = intern(cname);
     } else {
-        name[1023] = '\0'; /* paranoia, just in case of truncation */
-
-        gbl_myhostname = strdup(name);
-        gbl_mynode = intern(gbl_myhostname);
+        gbl_myhostname = intern(name);
     }
 
     getmyaddr();
@@ -5333,7 +5314,7 @@ static void handle_resume_sc()
      * table wasn't open yet so we couldn't check to see if a schema change was
      * in progress */
     if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_SC_RESUME_AUTOCOMMIT) &&
-        thedb->master == gbl_mynode) {
+        thedb->master == gbl_myhostname) {
         int irc = resume_schema_change();
         if (irc)
             logmsg(LOGMSG_ERROR, 
@@ -5670,6 +5651,15 @@ struct dbview *get_view_by_name(const char *view_name)
     view = hash_find_readonly(thedb->view_hash, &view_name);
     Pthread_rwlock_unlock(&thedb_lock);
     return view;
+}
+
+int count_views()
+{
+    int count = 0;
+    Pthread_rwlock_wrlock(&thedb_lock);
+    count = hash_get_num_entries(thedb->view_hash);
+    Pthread_rwlock_unlock(&thedb_lock);
+    return count;
 }
 
 int add_view(struct dbview *view)

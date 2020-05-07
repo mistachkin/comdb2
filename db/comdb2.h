@@ -105,10 +105,6 @@ typedef long long tranid_t;
 /* we will delete at most this many per run of purge_old_blkseq */
 #define MAXBLKSEQ_PURGE (5 * 1024)
 
-#define MAX_NUM_TABLES 1024
-#define MAX_NUM_QUEUES 1024
-#define MAX_NUM_VIEWS 1024
-
 #define DEC_ROUND_NONE (-1)
 
 enum AUXDB_TYPES {
@@ -347,7 +343,8 @@ enum OSQL_RPL_TYPE {
     OSQL_DELIDX = 24, /* new osql type to support indexes on expressions */
     OSQL_INSIDX = 25, /* new osql type to support indexes on expressions */
     OSQL_STARTGEN = 27,
-    MAX_OSQL_TYPES = 28
+    OSQL_DONE_WITH_EFFECTS = 28,
+    MAX_OSQL_TYPES = 29,
 };
 
 enum DEBUGREQ { DEBUG_METADB_PUT = 1 };
@@ -1587,10 +1584,9 @@ extern int gbl_maxwthreads;  /* max write threads */
 extern int gbl_maxthreads;   /* max number of threads allowed */
 extern int gbl_maxqueue;     /* max number of requests to be queued up */
 extern int gbl_thd_linger;   /* number of seconds for threads to linger */
-extern char *gbl_mynode;     /* my hostname */
+extern char *gbl_myhostname; /* my hostname */
 extern char *gbl_machine_class; /* my machine class */
 struct in_addr gbl_myaddr;   /* my IPV4 address */
-extern char *gbl_myhostname; /* my hostname */
 extern int gbl_mynodeid;     /* node number, for backwards compatibility */
 extern pid_t gbl_mypid;      /* my pid */
 extern int gbl_create_mode;  /* create files if no exists */

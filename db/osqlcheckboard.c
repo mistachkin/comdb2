@@ -41,6 +41,8 @@
 #define SQLHERR_MASTER_QUEUE_FULL -108
 #define SQLHERR_MASTER_TIMEOUT -109
 
+extern int gbl_master_sends_query_effects;
+
 typedef struct osql_checkboard {
     hash_t *rqs;     /* sql threads processing a blocksql are registered here */
     hash_t *rqsuuid; /* like above, but register by uuid */
@@ -199,12 +201,12 @@ static osql_sqlthr_t *get_new_entry(struct sqlclntstate *clnt, int type)
         }
     }
 
-    if (clnt->osql.host == gbl_mynode) {
+    if (clnt->osql.host == gbl_myhostname) {
         clnt->osql.host = 0;
     }
 
     if (entry->master == 0)
-        entry->master = gbl_mynode;
+        entry->master = gbl_myhostname;
 
     Pthread_mutex_init(&entry->mtx, NULL);
     Pthread_cond_init(&entry->cond, NULL);
@@ -306,7 +308,8 @@ bool osql_chkboard_sqlsession_exists(unsigned long long rqid, uuid_t uuid)
 }
 
 int osql_chkboard_sqlsession_rc(unsigned long long rqid, uuid_t uuid, int nops,
-                                void *data, struct errstat *errstat)
+                                void *data, struct errstat *errstat,
+                                struct query_effects *effects)
 {
     if (!checkboard)
         return 0;
@@ -341,16 +344,8 @@ int osql_chkboard_sqlsession_rc(unsigned long long rqid, uuid_t uuid, int nops,
     entry->done = 1; /* mem sync? */
     entry->nops = nops;
 
-    if (entry->type == OSQL_SNAP_UID_REQ && data != NULL) {
-        snap_uid_t *snap_info = (snap_uid_t *)data;
-        if (snap_info->rqtype == OSQL_NET_SNAP_FOUND_UID) {
-            entry->clnt->is_retry = 1;
-            entry->clnt->effects = snap_info->effects;
-        } else if (snap_info->rqtype == OSQL_NET_SNAP_NOT_FOUND_UID) {
-            entry->clnt->is_retry = 0;
-        } else {
-            entry->clnt->is_retry = -1;
-        }
+    if (gbl_master_sends_query_effects && effects) {
+        memcpy(&entry->clnt->effects, effects, sizeof(struct query_effects));
     }
 
     Pthread_cond_signal(&entry->cond);
@@ -373,7 +368,7 @@ int osql_checkboard_master_changed(void *obj, void *arg)
 {
     osql_sqlthr_t *rq = obj;
     Pthread_mutex_lock(&rq->mtx);
-    if (rq->master != arg && !(rq->master == 0 && gbl_mynode == arg)) {
+    if (rq->master != arg && !(rq->master == 0 && gbl_myhostname == arg)) {
         signal_master_change(rq, arg, __func__);
     }
     Pthread_mutex_unlock(&rq->mtx);
@@ -492,7 +487,7 @@ static int wait_till_max_wait_or_timeout(osql_sqlthr_t *entry, int max_wait,
             entry->last_checked = now;
 
             /* try poke again */
-            if (entry->master == 0 || entry->master == gbl_mynode) {
+            if (entry->master == 0 || entry->master == gbl_myhostname) {
                 /* local checkup */
                 bool found =
                     osql_repository_session_exists(entry->rqid, entry->uuid);
@@ -668,7 +663,7 @@ int osql_reuse_sqlthr(struct sqlclntstate *clnt, char *master)
     entry->done = 0;
     entry->master_changed = 0;
     entry->master =
-        master ? master : gbl_mynode; /* master changed, store it here */
+        master ? master : gbl_myhostname; /* master changed, store it here */
     bzero(&entry->err, sizeof(entry->err));
     Pthread_mutex_unlock(&entry->mtx);
 

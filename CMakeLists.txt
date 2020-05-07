@@ -2,7 +2,6 @@ cmake_minimum_required (VERSION 3.1)
 project (Comdb2)
 
 set(CMAKE_C_STANDARD 99)
-set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS "Debug" "RelWithDebInfo" "Release")
@@ -83,6 +82,12 @@ add_definitions(
   -DCOMDB2_VERSION="2"
   -D_FILE_OFFSET_BITS=64
 )
+
+option(DEBUG_TXNLIST_PLHASH "Debug plhash txnlist implementation" OFF)
+mark_as_advanced(DEBUG_TXNLIST_PLHASH)
+if(DEBUG_TXNLIST_PLHASH)
+    add_definitions(-DDEBUG_TXNLIST_PLHASH)
+endif()
 
 option(DEBUG_STACK_TAG_SCHEMA "Stack at add or remove a tag-schema" OFF)
 mark_as_advanced(DEBUG_STACK_TAG_SCHEMA)
@@ -215,6 +220,7 @@ if(WITH_TCL AND NOT COMDB2_BUILD_STATIC)
   add_subdirectory(tcl)
 endif()
 if(NOT COMDB2_SKIP_TOOLS)
+  set(CMAKE_CXX_STANDARD 11)
   add_subdirectory(tools)
   add_subdirectory(tests/tools EXCLUDE_FROM_ALL)
 endif()

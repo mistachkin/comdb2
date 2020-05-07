@@ -802,9 +802,7 @@ static int do_replay_case(struct ireq *iq, void *fstseqnum, int seqlen,
 {
     int rc = 0;
     int outrc = 0, snapinfo_outrc = 0, snapinfo = 0;
-    uint8_t buf_fstblk[FSTBLK_HEADER_LEN + FSTBLK_PRE_RSPKL_LEN +
-                       BLOCK_RSPKL_LEN + FSTBLK_RSPERR_LEN + FSTBLK_RSPOK_LEN +
-                       (BLOCK_ERR_LEN * MAXBLOCKOPS)];
+    uint8_t buf_fstblk[FSTBLK_MAX_BUF_LEN];
     uint8_t *p_fstblk_buf = buf_fstblk,
             *p_fstblk_buf_end = buf_fstblk + sizeof(buf_fstblk);
 
@@ -985,6 +983,14 @@ static int do_replay_case(struct ireq *iq, void *fstseqnum, int seqlen,
                         flush_db();
                         abort();
                     }
+                }
+                // retrieve the effects
+                if (IQ_HAS_SNAPINFO(iq) &&
+                    (!(p_fstblk_buf = (uint8_t *)osqlcomm_query_effects_get(
+                           &(IQ_SNAPINFO(iq)->effects), p_fstblk_buf,
+                           p_fstblk_buf_end)))) {
+                    flush_db();
+                    abort();
                 }
             }
 
@@ -1276,7 +1282,7 @@ int tolongblock(struct ireq *iq)
     if (!gbl_local_mode) {
         char *mstr = iq->dbenv->master;
 
-        if (mstr != gbl_mynode) {
+        if (mstr != gbl_myhostname) {
             if (iq->is_socketrequest) {
                 return ERR_REJECTED;
             }
@@ -1956,7 +1962,7 @@ int toblock(struct ireq *iq)
     if (!gbl_local_mode) {
         char *mstr = iq->dbenv->master;
 
-        if (mstr != gbl_mynode) {
+        if (mstr != gbl_myhostname) {
             if (iq->sorese) {
                 /* Ask the replicant to retry against the new master. */
                 iq->sorese->rcout = ERR_NOMASTER;
@@ -2423,7 +2429,7 @@ static void backout_and_abort_tranddl(struct ireq *iq, tran_type *parent,
     }
     if (iq->sc_close_tran) {
         if (iq->sc_closed_files)
-            rc = trans_commit(iq, iq->sc_close_tran, gbl_mynode);
+            rc = trans_commit(iq, iq->sc_close_tran, gbl_myhostname);
         else
             rc = trans_abort(iq, iq->sc_close_tran);
         if (rc != 0) {
@@ -2449,7 +2455,7 @@ static void backout_and_abort_tranddl(struct ireq *iq, tran_type *parent,
         iq->sc_locked = 0;
     }
     if (iq->sc_logical_tran) {
-        rc = trans_commit_logical(iq, iq->sc_logical_tran, gbl_mynode, 0, 1,
+        rc = trans_commit_logical(iq, iq->sc_logical_tran, gbl_myhostname, 0, 1,
                                   NULL, 0, NULL, 0);
         if (rc != 0) {
             logmsg(LOGMSG_ERROR, "%s:%d TD %ld TRANS_ABORT FAILED RC %d\n",
@@ -2551,7 +2557,8 @@ static inline int check_for_node_up(struct ireq *iq, block_state_t *p_blkstate)
 {
     /* If we get here and we are rtcpu-ed AND this is a cluster,
      * return RC_TRAN_CLIENT_RETRY. */
-    if (debug_switch_reject_writes_on_rtcpu() && is_node_up(gbl_mynode) != 1) {
+    if (debug_switch_reject_writes_on_rtcpu() &&
+        is_node_up(gbl_myhostname) != 1) {
         const char *nodes[REPMAX];
         int nsiblings;
         nsiblings = net_get_all_nodes_connected(thedb->handle_sibling, nodes);
@@ -2668,7 +2675,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
         source_host = p_blkstate->source_host;
     } else {
         /* this is considered local block op */
-        source_host = gbl_mynode;
+        source_host = gbl_myhostname;
     }
 
     addrrn = -1; /*for secafpri, remember last rrn. */
@@ -2782,7 +2789,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
             int replay_len = 0;
             bdb_get_readlock(thedb->bdb_env, "early_replay_cnonce", __func__,
                              __LINE__);
-            if (thedb->master != gbl_mynode) {
+            if (thedb->master != gbl_myhostname) {
                 bdb_rellock(thedb->bdb_env, __func__, __LINE__);
                 outrc = ERR_NOMASTER;
                 fromline = __LINE__;
@@ -2813,7 +2820,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                of the same blocksql transactions */
             bdb_get_readlock(thedb->bdb_env, "early_replay", __func__,
                              __LINE__);
-            if (thedb->master != gbl_mynode) {
+            if (thedb->master != gbl_myhostname) {
                 bdb_rellock(thedb->bdb_env, __func__, __LINE__);
                 outrc = ERR_NOMASTER;
                 fromline = __LINE__;
@@ -2898,7 +2905,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
              * downgrade
              * because it holds a bdb readlock.  Make sure I am still the master
              */
-            if (thedb->master != gbl_mynode || irc == ERR_NOMASTER) {
+            if (thedb->master != gbl_myhostname || irc == ERR_NOMASTER) {
                 numerrs = 1;
                 rc = ERR_NOMASTER; /*this is what bdb readonly error gets us */
                 GOTOBACKOUT;
@@ -4748,7 +4755,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
             /* at this point we have a transaction, which would prevent a
             downgrade;
             make sure I am still the master */
-            if (thedb->master != gbl_mynode) {
+            if (thedb->master != gbl_myhostname) {
                 numerrs = 1;
                 rc = ERR_NOMASTER; /*this is what bdb readonly error gets us */
                 GOTOBACKOUT;
@@ -5195,7 +5202,8 @@ backout:
             if (iq->tranddl) {
                 if (iq->sc_close_tran) {
                     if (iq->sc_closed_files)
-                        irc = trans_commit(iq, iq->sc_close_tran, gbl_mynode);
+                        irc =
+                            trans_commit(iq, iq->sc_close_tran, gbl_myhostname);
                     else
                         irc = trans_abort(iq, iq->sc_close_tran);
                     if (irc != 0) {
@@ -5269,7 +5277,7 @@ backout:
             if (iq->tranddl) {
                 bdb_get_readlock(thedb->bdb_env, "sc_downgrade", __func__,
                                  __LINE__);
-                if (thedb->master != gbl_mynode) {
+                if (thedb->master != gbl_myhostname) {
                     backout_schema_changes(iq, NULL);
                 }
                 bdb_rellock(thedb->bdb_env, __func__, __LINE__);
@@ -5390,16 +5398,7 @@ add_blkseq:
 
     iq->timings.replication_start = osql_log_time();
     if (have_blkseq) {
-        /* this buffer must always be able to hold a fstblk header and the max
-         * number of block err's.  it will also have to hold one of the
-         * following: fstblk pre rspkl + rspkl, fstblk rsperr, or fstblk rspok.
-         * since I don't want to bother figuring out which of those lenghts is
-         * the longest, just add them all together */
-        uint8_t buf_fstblk[FSTBLK_HEADER_LEN + FSTBLK_PRE_RSPKL_LEN +
-                           BLOCK_RSPKL_LEN + FSTBLK_RSPERR_LEN +
-                           FSTBLK_RSPOK_LEN + (BLOCK_ERR_LEN * MAXBLOCKOPS) +
-                           sizeof(int) + ERRSTAT_LEN + sizeof(int) + sizeof(int)];
-
+        uint8_t buf_fstblk[FSTBLK_MAX_BUF_LEN];
         uint8_t *p_buf_fstblk = buf_fstblk;
         const uint8_t *p_buf_fstblk_end = buf_fstblk + sizeof(buf_fstblk);
 
@@ -5524,6 +5523,11 @@ add_blkseq:
                         return ERR_INTERNAL;
                     }
                 }
+                if (!(p_buf_fstblk = osqlcomm_query_effects_put(
+                          &(IQ_SNAPINFO(iq)->effects), p_buf_fstblk,
+                          p_buf_fstblk_end))) {
+                    return ERR_INTERNAL;
+                }
             }
 
             if (!(p_buf_fstblk = buf_no_net_put(
@@ -5614,8 +5618,8 @@ add_blkseq:
                     }
                     if (iq->sc_logical_tran) {
                         irc = trans_commit_logical(iq, iq->sc_logical_tran,
-                                                   gbl_mynode, 0, 1, NULL, 0,
-                                                   NULL, 0);
+                                                   gbl_myhostname, 0, 1, NULL,
+                                                   0, NULL, 0);
                     }
                     assert(outrc || iq->sc_running == 0);
                     iq->sc_logical_tran = NULL;
@@ -5755,7 +5759,7 @@ add_blkseq:
                 }
                 /* TODO: private blkseq with rowlocks? */
                 rc = trans_commit_logical(
-                    iq, trans, gbl_mynode, 0, 1, buf_fstblk,
+                    iq, trans, gbl_myhostname, 0, 1, buf_fstblk,
                     p_buf_fstblk - buf_fstblk + sizeof(int), bskey, bskeylen);
 
                 if (hascommitlock) {
@@ -5838,8 +5842,8 @@ add_blkseq:
                     irc = ERR_NOT_DURABLE;
             } else {
 
-                irc = trans_commit_logical(iq, trans, gbl_mynode, 0, 1, NULL, 0,
-                                           NULL, 0);
+                irc = trans_commit_logical(iq, trans, gbl_myhostname, 0, 1,
+                                           NULL, 0, NULL, 0);
                 if (irc == BDBERR_NOT_DURABLE)
                     irc = ERR_NOT_DURABLE;
 

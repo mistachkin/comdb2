@@ -70,12 +70,16 @@ int do_alter_queues_int(struct schema_change_type *sc)
     int rc;
     db = getqueuebyname(sc->tablename);
     if (db == NULL) {
-        /* create new queue */
-        rc = add_queue_to_environment(sc->tablename, sc->avgitemsz,
-                                      sc->pagesize);
-        /* tell other nodes to follow suit */
-        broadcast_add_new_queue(
-            sc->tablename, sc->avgitemsz); // TODO Check the return value ??????
+        if (thedb->num_qdbs >= MAX_NUM_QUEUES) {
+            logmsg(LOGMSG_ERROR, "do_queue_change: too many queues\n");
+            rc = -1;
+        } else {
+            /* create new queue */
+            rc = add_queue_to_environment(sc->tablename, sc->avgitemsz,
+                                          sc->pagesize);
+            /* tell other nodes to follow suit */
+            broadcast_add_new_queue(sc->tablename, sc->avgitemsz);
+        }
     } else {
         /* TODO - change item size in existing queue */
         logmsg(LOGMSG_ERROR,
@@ -134,7 +138,7 @@ int add_queue_to_environment(char *table, int avgitemsz, int pagesize)
     stop_threads(thedb);
     resume_threads(thedb);
 
-    if (newdb->dbenv->master == gbl_mynode) {
+    if (newdb->dbenv->master == gbl_myhostname) {
         /* I am master: create new db */
         newdb->handle =
             bdb_create_queue(newdb->tablename, thedb->basedir, avgitemsz,
@@ -442,18 +446,27 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
     if ((sc->drop_table || sc->alteronly) && db == NULL) {
         sbuf2printf(sb, "!Trigger %s doesn't exist.\n", sc->tablename);
         sbuf2printf(sb, "FAILED\n");
+        rc = -1;
         goto done;
     }
     /* adding a queue that already exists? */
     else if (sc->addonly && db != NULL) {
         sbuf2printf(sb, "!Trigger %s already exists.\n", sc->tablename);
         sbuf2printf(sb, "FAILED\n");
+        rc = -1;
         goto done;
     }
     if (sc->addonly) {
         if (javasp_exists(sc->tablename)) {
             sbuf2printf(sb, "!Procedure %s already exists.\n", sc->tablename);
             sbuf2printf(sb, "FAILED\n");
+            rc = -1;
+            goto done;
+        }
+        if (thedb->num_qdbs >= MAX_NUM_QUEUES) {
+            sbuf2printf(sb, "!Too many queues.\n");
+            sbuf2printf(sb, "FAILED\n");
+            rc = -1;
             goto done;
         }
     }
@@ -673,7 +686,7 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
     }
 
     if (!same_tran) {
-        rc = trans_commit(&iq, tran, gbl_mynode);
+        rc = trans_commit(&iq, tran, gbl_myhostname);
         if (rc) {
             sbuf2printf(sb, "!Failed to commit transaction\n");
             goto done;
@@ -722,7 +735,7 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
         }
 
         if (!same_tran) {
-            rc = trans_commit(&iq, tran, gbl_mynode);
+            rc = trans_commit(&iq, tran, gbl_myhostname);
             if (rc) {
                 sbuf2printf(sb, "!Failed to commit transaction\n");
                 goto done;
@@ -738,7 +751,7 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
             sbuf2printf(sb, "!Failed write scdone , rc=%d\n", rc);
             goto done;
         }
-        rc = trans_commit(&iq, ltran, gbl_mynode);
+        rc = trans_commit(&iq, ltran, gbl_myhostname);
         if (rc || bdberr != BDBERR_NOERROR) {
             sbuf2printf(sb, "!Failed to commit transaction, rc=%d\n", rc);
             goto done;
@@ -752,8 +765,9 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
     }
 
 done:
-    if (tran) bdb_tran_abort(thedb->bdb_env, tran, &bdberr);
     if (ltran) bdb_tran_abort(thedb->bdb_env, ltran, &bdberr);
+    else if (tran)
+        bdb_tran_abort(thedb->bdb_env, tran, &bdberr);
 
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s rc:%d\n", __func__, rc);

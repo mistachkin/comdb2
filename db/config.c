@@ -54,7 +54,6 @@ int gbl_disable_access_controls;
 extern char *gbl_recovery_options;
 extern const char *gbl_repoplrl_fname;
 extern char gbl_dbname[MAX_DBNAME_LENGTH];
-extern char **qdbs;
 extern char **sfuncs;
 extern char **afuncs;
 static int gbl_nogbllrl; /* don't load /bb/bin/comdb2*.lrl */
@@ -334,6 +333,7 @@ static char *legacy_options[] = {
     "logmsg notimestamp",
     "logmsg skiplevel",
     "logput window 1",
+    "master_sends_query_effects 0",
     "noblobstripe",
     "nochecksums",
     "nocrc32c",
@@ -410,7 +410,7 @@ static int lrl_if(char **tok_inout, char *line, int line_len, int *st,
 
 void getmyaddr()
 {
-    if (comdb2_gethostbyname(&gbl_mynode, &gbl_myaddr) != 0) {
+    if (comdb2_gethostbyname(&gbl_myhostname, &gbl_myaddr) != 0) {
         gbl_myaddr.s_addr = INADDR_LOOPBACK; /* default to localhost */
         return;
     }
@@ -781,10 +781,10 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
                 if (comdb2_gethostbyname(&name, &addr) == 0 &&
                     addr.s_addr == gbl_myaddr.s_addr) {
                     /* Assume I am better known by this name. */
-                    gbl_mynode = intern(name);
-                    gbl_mynodeid = machine_num(gbl_mynode);
+                    gbl_myhostname = intern(name);
+                    gbl_mynodeid = machine_num(gbl_myhostname);
                 }
-                if (strcmp(gbl_mynode, name) == 0 &&
+                if (strcmp(gbl_myhostname, name) == 0 &&
                     gbl_rep_node_pri == 0) {
                     /* assign the priority of current node according to its
                      * sequence in nodes list. */
@@ -812,7 +812,7 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
                     dbenv->nsiblings++;
                 }
             }
-            dbenv->sibling_hostname[0] = gbl_mynode;
+            dbenv->sibling_hostname[0] = gbl_myhostname;
         }
     } else if (tokcmp(tok, ltok, "machine_classes") == 0) {
         int classval = 1;
@@ -913,22 +913,17 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
         parse_lua_funcs(a);
     } else if (tokcmp(tok, ltok, "queuedb") == 0) {
         int nqdbs = thedb->num_qdbs;
-        qdbs = realloc(qdbs, (nqdbs + 1) * sizeof(char *));
-        if (qdbs == NULL) {
-            logmsgperror("realloc");
-            return -1;
-        }
         thedb->qdbs = realloc(thedb->qdbs, (nqdbs + 1) * sizeof(dbtable *));
         if (thedb->qdbs == NULL) {
             logmsgperror("realloc");
             return -1;
         }
         tok = segtok(line, len, &st, &ltok);
-        qdbs[nqdbs] = tokdup(tok, ltok);
-        char *name = get_qdb_name(qdbs[nqdbs]);
+        char *qfname = tokdup(tok, ltok);
+        char *name = get_qdb_name(qfname);
         if (name == NULL) {
             logmsg(LOGMSG_ERROR, "Failed to obtain queuedb name from:%s\n",
-                   qdbs[nqdbs]);
+                   qfname);
             return -1;
         }
         dbtable *qdb = newqdb(dbenv, name, 65536, 65536, 1);
@@ -937,6 +932,7 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
             return -1;
         }
         free(name);
+        free(qfname);
         thedb->qdbs[nqdbs] = qdb;
         ++thedb->num_qdbs;
     } else if (tokcmp(tok, ltok, "table") == 0) {

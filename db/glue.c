@@ -291,7 +291,7 @@ static int trans_start_int_int(struct ireq *iq, tran_type *parent_trans,
          * Once we're inside a transaction we hold the bdb read lock
          * until we've committed or aborted so no need to worry about this
          * later on. */
-        if (bdberr == BDBERR_READONLY /*&& dbenv->master!=gbl_mynode*/) {
+        if (bdberr == BDBERR_READONLY /*&& dbenv->master!=gbl_myhostname*/) {
             /* return NOMASTER so client retries. */
             return ERR_NOMASTER;
         }
@@ -594,7 +594,7 @@ static int trans_wait_for_seqnum_int(void *bdb_handle, struct dbenv *dbenv,
 
     case REP_SYNC_SOURCE:
         /*source machine sync, wait for source machine */
-        if (source_node == gbl_mynode)
+        if (source_node == gbl_myhostname)
             break;
         iq->gluewhere = "bdb_wait_for_seqnum_from_node";
 
@@ -795,7 +795,7 @@ int trans_abort_logical(struct ireq *iq, void *trans, void *blkseq, int blklen,
     /* Single phy-txn logical aborts will set ss to 0: check before waiting */
     u_int32_t *file = (u_int32_t *)&ss;
     if (*file != 0) {
-        trans_wait_for_seqnum_int(bdb_handle, thedb, iq, gbl_mynode,
+        trans_wait_for_seqnum_int(bdb_handle, thedb, iq, gbl_myhostname,
                                   -1 /* timeoutms */, 1 /* adaptive */, &ss);
     }
     return rc;
@@ -2873,7 +2873,7 @@ static int new_master_callback(void *bdb_handle, char *host,
 
     if (assert_sc_clear) {
         bdb_assert_wrlock(bdb_handle, __func__, __LINE__);
-        if (oldmaster == gbl_mynode && host != gbl_mynode)
+        if (oldmaster == gbl_myhostname && host != gbl_myhostname)
             sc_assert_clear(__func__, __LINE__);
     }
 
@@ -2885,7 +2885,7 @@ static int new_master_callback(void *bdb_handle, char *host,
                newmaster ? newmaster : "NULL", egen);
     dbenv->gen = gen;
     /*this is only used when handle not established yet. */
-    if (host == gbl_mynode) {
+    if (host == gbl_myhostname) {
 
         trigger_clear_hash();
 
@@ -3185,7 +3185,9 @@ void net_new_queue(void *hndl, void *uptr, char *fromnode, int usertype,
     }
 
     msg->name[sizeof(msg->name) - 1] = '\0';
+    wrlock_schema_lk();
     rc = add_queue_to_environment(msg->name, msg->avgitemsz, 0);
+    unlock_schema_lk();
     net_ack_message(hndl, rc);
 }
 
@@ -3645,7 +3647,7 @@ int open_bdb_env(struct dbenv *dbenv)
 #endif
 
     if (dbenv->sibling_hostname[0] == NULL)
-        dbenv->sibling_hostname[0] = gbl_mynode;
+        dbenv->sibling_hostname[0] = gbl_myhostname;
 
     if (dbenv->nsiblings > 0) {
         /*zero element is always me. */
@@ -4258,7 +4260,7 @@ void backend_stat(struct dbenv *dbenv)
     logmsg(LOGMSG_USER, "txn commit delay        %d ms (max %d ms)\n", delay, delaymax);
     if (dbenv->nsiblings == 0)
         logmsg(LOGMSG_USER, "LOCAL MODE.\n");
-    else if (who == gbl_mynode)
+    else if (who == gbl_myhostname)
         logmsg(LOGMSG_USER, "I *AM* MASTER.  MASTER IS %s\n", who);
     else
         logmsg(LOGMSG_USER, "I AM NOT MASTER.  MASTER IS %s\n", who);
@@ -4749,7 +4751,7 @@ retry:
             goto backout;
     }
     if (!input_tran) {
-        rc = trans_commit(&iq, trans, gbl_mynode);
+        rc = trans_commit(&iq, trans, gbl_myhostname);
         if (iq.debug)
             logmsg(LOGMSG_USER, "meta_put:trans_commit RC %d\n", rc);
         if (rc == RC_INTERNAL_RETRY)
@@ -5163,8 +5165,7 @@ int dbq_add(struct ireq *iq, void *trans, const void *dta, size_t dtalen)
 int dbq_consume(struct ireq *iq, void *trans, int consumer, const struct bdb_queue_found *fnd)
 {
     int bdberr;
-    void *bdb_handle;
-    bdb_handle = get_bdb_handle_ireq(iq, AUXDB_NONE);
+    bdb_state_type *bdb_handle = get_bdb_handle_ireq(iq, AUXDB_NONE);
     if (!bdb_handle)
         return ERR_NO_AUXDB;
     iq->gluewhere = "bdb_queue_consume";
@@ -5178,7 +5179,7 @@ int dbq_consume(struct ireq *iq, void *trans, int consumer, const struct bdb_que
     if (bdberr == BDBERR_READONLY)
         return ERR_NOMASTER;
     if (bdberr == BDBERR_DELNOTFOUND)
-        return IX_NOTFND;
+        return  bdb_get_type(bdb_handle) == BDBTYPE_QUEUEDB ? ERR_UNCOMMITABLE_TXN: IX_NOTFND;
     return map_unhandled_bdb_wr_rcode("bdb_queue_consume", bdberr);
 }
 
