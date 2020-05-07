@@ -19,6 +19,7 @@ done | cdb2sql $SP_OPTIONS - >/dev/null
 for ((i=1;i<100;++i)); do
     ./sp_sc_create_table.sh $((i + 1)) &
     cdb2sql --host $SP_HOST $SP_OPTIONS "exec procedure dml1(${i})" &
+    wait
 done
 wait
 
