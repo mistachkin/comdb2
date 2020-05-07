@@ -24,7 +24,7 @@ wait
 
 for ((i=1;i<100;++i)); do
     ./sp_sc_create_table.sh $((i + 201)) &
-    cdb2sql --host $SP_HOST $SP_OPTIONS "exec procedure dml0(${i})" &
+    cdb2sql --host $SP_HOST $SP_OPTIONS "exec procedure dml0(${i})"
 done
 wait
 
