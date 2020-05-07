@@ -35,3 +35,4 @@ for ((i=1;i<1000;++i)); do
 done | cdb2sql --host $SP_HOST $SP_OPTIONS -
 
 cdb2sql $SP_OPTIONS "select 'post', s from t1 order by cast(s as integer);"
+cdb2sql $SP_OPTIONS "select queuename, depth from comdb2_queues order by queuename;"
