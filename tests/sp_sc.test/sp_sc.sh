@@ -12,27 +12,22 @@ EOF
 
 cdb2sql $SP_OPTIONS "insert into t1 values('outer t1');"
 
-for ((i=1;i<1000;++i)); do
+for ((i=1;i<100;++i)); do
     echo "insert into foraudit values(${i})"
 done | cdb2sql $SP_OPTIONS - >/dev/null
 
-for ((i=2;i<100;++i)); do
-cdb2sql $SP_OPTIONS - <<EOF &
-create table t${i} {$(cat t.csc2)}\$\$
-EOF
+for ((i=1;i<100;++i)); do
+    ./sp_sc_create_table.sh $((i + 1)) &
+    cdb2sql --host $SP_HOST $SP_OPTIONS "exec procedure dml1(${i})" &
 done
 wait
 
-cdb2sql $SP_OPTIONS "select name from sqlite_master where type = 'table' and name like 't%' order by name;"
-
-for ((i=1;i<1000;++i)); do
-    echo "exec procedure dml1(${i})"
-done | cdb2sql --host $SP_HOST $SP_OPTIONS - >/dev/null &
+for ((i=1;i<100;++i)); do
+    ./sp_sc_create_table.sh $((i + 201)) &
+    cdb2sql --host $SP_HOST $SP_OPTIONS "exec procedure dml0(${i})" &
+done
 wait
 
-for ((i=1;i<1000;++i)); do
-    echo "exec procedure dml0(${i})"
-done | cdb2sql --host $SP_HOST $SP_OPTIONS -
-
+cdb2sql $SP_OPTIONS "select count(*) from sqlite_master where type = 'table' and name like 't%';"
 cdb2sql $SP_OPTIONS "select 'post', s from t1 order by cast(s as integer);"
 cdb2sql $SP_OPTIONS "select queuename, depth from comdb2_queues order by queuename;"
