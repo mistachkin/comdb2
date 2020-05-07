@@ -9,4 +9,7 @@ local function main(test_no)
 		row1 = statement1:fetch()
 	end
 	db:commit()
+	local consumer = db:consumer()
+	consumer:get()
+	consumer:consume()
 end

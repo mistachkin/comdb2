@@ -3,11 +3,18 @@
 [[ -n "$3" ]] && exec >$3 2>&1
 cdb2sql $SP_OPTIONS - <<EOF
 create table t1 {$(cat t.csc2)}\$\$
+create table foraudit {$(cat foraudit.csc2)}\$\$
 create procedure dml0 version 'dml0test' {$(cat begin_select.lua)}\$\$
 create procedure dml1 version 'dml1test' {$(cat begin_insert.lua)}\$\$
+create lua consumer dml0 on (table foraudit for insert)
+create lua consumer dml1 on (table foraudit for insert)
 EOF
 
 cdb2sql $SP_OPTIONS "insert into t1 values('outer t1');"
+
+for ((i=1;i<1000;++i)); do
+    echo "insert into foraudit values(${i})"
+done | cdb2sql $SP_OPTIONS - >/dev/null
 
 for ((i=2;i<100;++i)); do
 cdb2sql $SP_OPTIONS - <<EOF &

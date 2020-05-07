@@ -6,4 +6,7 @@ local function main(test_no)
 	local rc1 = statement1:exec()
 	if rc1 ~= 0 then return db:error() end
 	db:commit()
+	local consumer = db:consumer()
+	consumer:get()
+	consumer:consume()
 end
