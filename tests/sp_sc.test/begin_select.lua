@@ -1,6 +1,6 @@
 local function main(test_no)
 	db:begin()
-	local statement1 = db:prepare("SELECT s FROM t1 WHERE s = ?")
+	local statement1 = db:prepare("SELECT 'inner', s FROM t1 WHERE s = ?")
 	if statement1 == nil then return db:error() end
 	statement1:bind(1, tostring(test_no))
 	local row1 = statement1:fetch()
