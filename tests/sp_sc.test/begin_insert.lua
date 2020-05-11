@@ -1,7 +1,9 @@
 local function main(test_no)
 	db:begin()
-	local statement0 = db:exec("SELECT sleep(2000)")
+	local statement0 = db:exec("SELECT sleep(abs(random() % 10))")
 	if statement0 == nil then return db:error() end
+	local row0 = statement0:fetch()
+	if row0 == nil then return db:error() end
 	local consumer = db:consumer()
 	consumer:get()
 	consumer:consume()
