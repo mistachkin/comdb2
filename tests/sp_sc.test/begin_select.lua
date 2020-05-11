@@ -1,6 +1,6 @@
 local function main(test_no)
 	db:begin()
-	local statement0 == db:exec("SELECT sleep(2000)")
+	local statement0 = db:exec("SELECT sleep(2000)")
 	if statement0 == nil then return db:error() end
 	local consumer = db:consumer()
 	consumer:get()
