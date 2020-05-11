@@ -2827,16 +2827,32 @@ static int check_thd_gen(struct sqlthdstate *thd, struct sqlclntstate *clnt)
                cached_analyze_gen, thd->views_gen, gbl_views_gen);
 
     if (thd->dbopen_gen != gbl_dbopen_gen) {
+        logmsg(LOGMSG_ERROR,
+               "SQLITE_SCHEMA: thd dbopen=%d vs %d thd analyze %d vs %d views %d vs %d\n",
+               thd->dbopen_gen, gbl_dbopen_gen, thd->analyze_gen,
+               cached_analyze_gen, thd->views_gen, gbl_views_gen);
+
         return SQLITE_SCHEMA;
     }
     if (thd->analyze_gen != cached_analyze_gen) {
         int ret;
         delete_prepared_stmts(thd);
         ret = reload_analyze(thd, clnt, cached_analyze_gen);
+
+        logmsg(LOGMSG_ERROR,
+               "RC (%d): thd dbopen=%d vs %d thd analyze %d vs %d views %d vs %d\n",
+               ret, thd->dbopen_gen, gbl_dbopen_gen, thd->analyze_gen,
+               cached_analyze_gen, thd->views_gen, gbl_views_gen);
+
         return ret;
     }
 
     if (thd->views_gen != gbl_views_gen) {
+        logmsg(LOGMSG_ERROR,
+               "SQLITE_SCHEMA_REMOTE: thd dbopen=%d vs %d thd analyze %d vs %d views %d vs %d\n",
+               thd->dbopen_gen, gbl_dbopen_gen, thd->analyze_gen,
+               cached_analyze_gen, thd->views_gen, gbl_views_gen);
+
         return SQLITE_SCHEMA_REMOTE;
     }
 
@@ -3453,6 +3469,7 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
 
                 /* Generate normalized sql */
                 if (!(flags & PREPARE_NO_NORMALIZE)) {
+                    free_normalized_sql(clnt);
                     normalize_stmt_and_store(clnt, rec, 0);
                     zNormSql = clnt->work.zNormSql;
                     normalize_sql_done = true;
@@ -3520,8 +3537,8 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
 
     if (rec->stmt) {
         thd->sqlthd->prepms = comdb2_time_epochms() - startPrepMs;
-        free_normalized_sql(clnt);
         if (!(flags & PREPARE_NO_NORMALIZE) && !normalize_sql_done) {
+            free_normalized_sql(clnt);
             normalize_stmt_and_store(clnt, rec, 0);
         }
         sqlite3_resetclock(rec->stmt);
