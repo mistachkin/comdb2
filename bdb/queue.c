@@ -1087,8 +1087,8 @@ static int bdb_queue_walk_int(bdb_state_type *bdb_state, int flags,
 }
 
 int bdb_queue_walk(bdb_state_type *bdb_state, int flags, bbuint32_t *lastitem,
-                   bdb_queue_walk_callback_t callback, void *userptr,
-                   int *bdberr)
+                   bdb_queue_walk_callback_t callback, tran_type *tran,
+                   void *userptr, int *bdberr)
 {
     int rc;
 
@@ -1097,9 +1097,10 @@ int bdb_queue_walk(bdb_state_type *bdb_state, int flags, bbuint32_t *lastitem,
      * worth of state,
      * caller needs to call it correctly. */
     if (bdb_state->bdbtype == BDBTYPE_QUEUEDB) {
-        rc = bdb_queuedb_walk(bdb_state, flags, lastitem, callback, userptr,
-                              bdberr);
+        rc = bdb_queuedb_walk(bdb_state, flags, lastitem, callback, tran,
+                              userptr, bdberr);
     } else {
+        /* TODO: The "tran" parameter is not passed here.  Maybe it should be? */
         rc = bdb_queue_walk_int(bdb_state, flags, lastitem, callback, userptr,
                                 bdberr);
     }

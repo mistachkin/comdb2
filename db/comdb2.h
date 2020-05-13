@@ -2510,9 +2510,9 @@ typedef int (*dbq_stats_callback_t)(int consumern, size_t item_length,
                                     void *userptr);
 
 int dbq_walk(struct ireq *iq, int flags, dbq_walk_callback_t callback,
-             void *userptr);
+             tran_type *tran, void *userptr);
 int dbq_odh_stats(struct ireq *iq, dbq_stats_callback_t callback,
-                  void *userptr);
+                  tran_type *tran, void *userptr);
 int dbq_dump(struct dbtable *db, FILE *out);
 int fix_consumers_with_bdblib(struct dbenv *dbenv);
 int dbq_add_goose(struct ireq *iq, void *trans);
