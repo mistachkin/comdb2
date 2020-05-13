@@ -536,8 +536,8 @@ done:
 }
 
 int bdb_queuedb_stats(bdb_state_type *bdb_state,
-                      bdb_queue_stats_callback_t callback, void *userptr,
-                      int *bdberr)
+                      bdb_queue_stats_callback_t callback, tran_type *tran,
+                      void *userptr, int *bdberr)
 {
     DBT dbt_key = {0}, dbt_data = {0};
     DBC *dbcp1 = NULL;
@@ -556,7 +556,7 @@ int bdb_queuedb_stats(bdb_state_type *bdb_state,
     dbt_key.flags = dbt_data.flags = DB_DBT_REALLOC;
 
     DB *db1 = BDB_QUEUEDB_GET_DBP_ZERO(bdb_state);
-    rc = db1->cursor(db1, NULL, &dbcp1, 0);
+    rc = db1->cursor(db1, tran ? tran->tid : NULL, &dbcp1, 0);
 
     if (rc != 0) {
         *bdberr = BDBERR_MISC;
@@ -565,7 +565,7 @@ int bdb_queuedb_stats(bdb_state_type *bdb_state,
 
     DB *db2 = BDB_QUEUEDB_GET_DBP_ONE(bdb_state);
     if (db2 != NULL) {
-        rc = db2->cursor(db2, NULL, &dbcp2, 0);
+        rc = db2->cursor(db2, tran ? tran->tid : NULL, &dbcp2, 0);
 
         if (rc != 0) {
             *bdberr = BDBERR_MISC;
@@ -681,8 +681,8 @@ done:
 }
 
 int bdb_queuedb_walk(bdb_state_type *bdb_state, int flags, void *lastitem,
-                     bdb_queue_walk_callback_t callback, void *userptr,
-                     int *bdberr)
+                     bdb_queue_walk_callback_t callback, tran_type *tran,
+                     void *userptr, int *bdberr)
 {
     DB *dbs[2] = {
         BDB_QUEUEDB_GET_DBP_ZERO(bdb_state),
@@ -718,7 +718,7 @@ int bdb_queuedb_walk(bdb_state_type *bdb_state, int flags, void *lastitem,
         dbt_key.flags = dbt_data.flags = DB_DBT_REALLOC;
 
         /* this API is a little nutty... */
-        rc = db->cursor(db, NULL, &dbcp, 0);
+        rc = db->cursor(db, tran ? tran->tid : NULL, &dbcp, 0);
         if (rc != 0) {
             *bdberr = BDBERR_MISC;
             return -1;
