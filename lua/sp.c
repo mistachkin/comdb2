@@ -712,7 +712,10 @@ static int grab_qdb_table_read_lock(struct sqlclntstate *clnt,
     if ((reg != NULL) && reg->qdb_locked) {
         return 0; /* we already have the table read lock */
     }
-    if (!have_schema_lock) rdlock_schema_lk();
+    if (!have_schema_lock && (tryrdlock_schema_lk() != 0)) {
+        logmsg(LOGMSG_WARN, "%s: tryrdlock_schema_lk failed\n", __func__);
+        return -2;
+    }
     int rc = bdb_lock_table_read_fromlid(db->handle,
              bdb_get_lid_from_cursortran(clnt->dbtran.cursor_tran));
     if (rc != 0) {
@@ -738,8 +741,10 @@ static int dbq_poll_int(Lua L, dbconsumer_t *q)
     struct qfound f = {0};
     int rc = grab_qdb_table_read_lock(clnt, q->iq.usedb, &q->info, 0, NULL);
     if (rc != 0) {
+        // TODO: Temporary hack for testing.
+        //       Transform -2 (schema lock fail) to 0 (success).
         Pthread_mutex_unlock(q->lock);
-        return -1;
+        return rc == -2 ? 0 : -1;
     }
     rc = dbq_get(&q->iq, 0, &q->last, &f.item, &f.len, &f.dtaoff, &q->fnd,
                  &f.seq, &f.epoch);
