@@ -2076,7 +2076,7 @@ int sql_syntax_check(struct ireq *iq, struct dbtable *db)
 
     rc = sqlite3_open_serial("db", &hndl, NULL);
     if (rc) {
-        logmsg(LOGMSG_ERROR, "%s: sqlite3_open failed\n", __func__);
+        logmsg(LOGMSG_ERROR, "%s: sqlite3_open_serial failed\n", __func__);
         goto done;
     }
 
@@ -2100,7 +2100,7 @@ done:
     if (got_curtran && put_curtran(thedb->bdb_env, &clnt))
         logmsg(LOGMSG_ERROR, "%s: failed to close curtran\n", __func__);
     if (hndl)
-        sqlite3_close(hndl);
+        sqlite3_close_serial(&hndl);
 
     cleanup_clnt(&clnt);
     done_sql_thread();
@@ -11272,7 +11272,7 @@ void stat4dump(int more, char *table, int istrace)
         ctrace("\n");
 
 close:
-    sqlite3_close(db);
+    sqlite3_close_serial(&db);
 put:
     put_curtran(thedb->bdb_env, &clnt);
 out:
@@ -12435,7 +12435,7 @@ long long run_sql_thd_return_ll(const char *query, struct sql_thread *thd,
     }
     thd->clnt = NULL;
 
-    if ((crc = sqlite3_close(sqldb)) != 0)
+    if ((crc = sqlite3_close_serial(&sqldb)) != 0)
         errstat_set_rcstrf(err, -1, "close rc %d\n", crc);
 
 cleanup:

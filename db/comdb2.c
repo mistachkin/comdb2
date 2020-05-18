@@ -6014,8 +6014,7 @@ retry_tran:
         thd = sqlthd->clnt->thd;
 
         delete_prepared_stmts(thd);
-        sqlite3_close(thd->sqldb);
-        thd->sqldb = NULL;
+        sqlite3_close_serial(&thd->sqldb);
     }
 
     create_sqlmaster_records(tran);
