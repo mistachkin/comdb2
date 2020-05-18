@@ -1158,6 +1158,7 @@ int sql_mem_init(void *dummy);
 void sql_mem_shutdown(void *dummy);
 
 int sqlite3_open_serial(const char *filename, sqlite3 **, struct sqlthdstate *);
+int sqlite3_close_serial(sqlite3 **);
 
 void reset_clnt(struct sqlclntstate *, SBUF2 *, int initial);
 void cleanup_clnt(struct sqlclntstate *);
