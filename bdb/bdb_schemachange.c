@@ -63,7 +63,7 @@ int bdb_bump_dbopen_gen(const char *message, const char *funcName,
     int rc = ATOMIC_ADD32(gbl_dbopen_gen, 1);
     if (message == NULL) message = "<null>";
     logmsg(LOGMSG_USER, "DBOPEN_GEN is now %d (via %s, %s, line #%d): %s\n",
-           rc, funcName, fileName, lineNo);
+           rc, funcName, fileName, lineNo, message);
     return rc;
 }
 
