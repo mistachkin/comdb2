@@ -2823,13 +2823,13 @@ static int check_thd_gen(struct sqlthdstate *thd, struct sqlclntstate *clnt)
     if (gbl_fdb_track)
         logmsg(LOGMSG_USER,
                "XXX: thd dbopen=%d vs %d thd analyze %d vs %d views %d vs %d\n",
-               thd->dbopen_gen, gbl_dbopen_gen, thd->analyze_gen,
+               thd->dbopen_gen, ATOMIC_LOAD32(gbl_dbopen_gen), thd->analyze_gen,
                cached_analyze_gen, thd->views_gen, gbl_views_gen);
 
-    if (thd->dbopen_gen != gbl_dbopen_gen) {
+    if (thd->dbopen_gen != ATOMIC_LOAD32(gbl_dbopen_gen)) {
         logmsg(LOGMSG_ERROR,
                "SQLITE_SCHEMA: thd dbopen=%d vs %d thd analyze %d vs %d views %d vs %d\n",
-               thd->dbopen_gen, gbl_dbopen_gen, thd->analyze_gen,
+               thd->dbopen_gen, ATOMIC_LOAD32(gbl_dbopen_gen), thd->analyze_gen,
                cached_analyze_gen, thd->views_gen, gbl_views_gen);
 
         return SQLITE_SCHEMA;
@@ -2841,7 +2841,7 @@ static int check_thd_gen(struct sqlthdstate *thd, struct sqlclntstate *clnt)
 
         logmsg(LOGMSG_ERROR,
                "RC (%d): thd dbopen=%d vs %d thd analyze %d vs %d views %d vs %d\n",
-               ret, thd->dbopen_gen, gbl_dbopen_gen, thd->analyze_gen,
+               ret, thd->dbopen_gen, ATOMIC_LOAD32(gbl_dbopen_gen), thd->analyze_gen,
                cached_analyze_gen, thd->views_gen, gbl_views_gen);
 
         return ret;
@@ -2850,7 +2850,7 @@ static int check_thd_gen(struct sqlthdstate *thd, struct sqlclntstate *clnt)
     if (thd->views_gen != gbl_views_gen) {
         logmsg(LOGMSG_ERROR,
                "SQLITE_SCHEMA_REMOTE: thd dbopen=%d vs %d thd analyze %d vs %d views %d vs %d\n",
-               thd->dbopen_gen, gbl_dbopen_gen, thd->analyze_gen,
+               thd->dbopen_gen, ATOMIC_LOAD32(gbl_dbopen_gen), thd->analyze_gen,
                cached_analyze_gen, thd->views_gen, gbl_views_gen);
 
         return SQLITE_SCHEMA_REMOTE;
@@ -4683,7 +4683,7 @@ check_version:
                 /* there is no really way forward, grab core */
                 abort();
             }
-            thd->dbopen_gen = gbl_dbopen_gen;
+            thd->dbopen_gen = ATOMIC_LOAD32(gbl_dbopen_gen);
         }
 
         get_copy_rootpages_nolock(thd->sqlthd);
