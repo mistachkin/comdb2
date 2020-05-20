@@ -56,7 +56,7 @@ typedef enum scdone {
     (((a) == add_queue_file) || ((a) == del_queue_file))
 
 #define BDB_BUMP_DBOPEN_GEN(type, msg) \
-    bdb_bump_dbopen_gen(#(type), (msg), __func__, __FILE__, __LINE__)
+    bdb_bump_dbopen_gen(#type, (msg), __func__, __FILE__, __LINE__)
 
 int bdb_bump_dbopen_gen(const char *type, const char *message,
                         const char *funcName, const char *fileName, int lineNo);
