@@ -4203,6 +4203,11 @@ static void handle_stored_proc(struct sqlthdstate *thd,
     free_original_normalized_sql(clnt);
     normalize_stmt_and_store(clnt, NULL, 1);
 
+    if (thd->dbopen_gen != ATOMIC_LOAD32(gbl_dbopen_gen)) {
+        logmsg(LOGMSG_USER, "handle_stored_proc: STALE THREAD %d vs %d: %s\n",
+               thd->dbopen_gen, ATOMIC_LOAD32(gbl_dbopen_gen), clnt->sql);
+    }
+
     memset(&clnt->spcost, 0, sizeof(struct sql_hist_cost));
     int rc = exec_procedure(thd, clnt, &errstr);
     if (rc) {
