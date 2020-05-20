@@ -1555,6 +1555,12 @@ static void log_cost(struct reqlogger *logger, int64_t cost, int64_t rows) {
 int handle_sql_begin(struct sqlthdstate *thd, struct sqlclntstate *clnt,
                      enum trans_clntcomm sideeffects)
 {
+    if (thd->dbopen_gen != ATOMIC_LOAD32(gbl_dbopen_gen)) {
+        logmsg(LOGMSG_USER,
+               "handle_sql_begin: STALE THREAD %d vs %d: %s\n",
+               thd->dbopen_gen, ATOMIC_LOAD32(gbl_dbopen_gen), clnt->sql);
+    }
+
     Pthread_mutex_lock(&clnt->wait_mutex);
     /* if this is a new chunk, do not stop the hearbeats */
     if (sideeffects != TRANS_CLNTCOMM_CHUNK)
@@ -1591,6 +1597,11 @@ done:
 static int handle_sql_wrongstate(struct sqlthdstate *thd,
                                  struct sqlclntstate *clnt)
 {
+    if (thd->dbopen_gen != ATOMIC_LOAD32(gbl_dbopen_gen)) {
+        logmsg(LOGMSG_USER,
+               "handle_sql_wrongstate: STALE THREAD %d vs %d: %s\n",
+               thd->dbopen_gen, ATOMIC_LOAD32(gbl_dbopen_gen), clnt->sql);
+    }
 
     sql_set_sqlengine_state(clnt, __FILE__, __LINE__, SQLENG_NORMAL_PROCESS);
 
@@ -2067,6 +2078,12 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
                               struct sqlclntstate *clnt,
                               enum trans_clntcomm sideeffects)
 {
+    if (thd->dbopen_gen != ATOMIC_LOAD32(gbl_dbopen_gen)) {
+        logmsg(LOGMSG_USER,
+               "handle_sql_commitrollback: STALE THREAD %d vs %d: %s\n",
+               thd->dbopen_gen, ATOMIC_LOAD32(gbl_dbopen_gen), clnt->sql);
+    }
+
     int rc = 0;
     int outrc = 0;
 
@@ -4245,6 +4262,12 @@ int handle_sqlite_requests(struct sqlthdstate *thd, struct sqlclntstate *clnt)
     struct sql_state rec = {0};
     rec.sql = clnt->sql;
     char *allocd_str = NULL;
+
+    if (thd->dbopen_gen != ATOMIC_LOAD32(gbl_dbopen_gen)) {
+        logmsg(LOGMSG_USER,
+               "handle_sqlite_requests: STALE THREAD %d vs %d: %s\n",
+               thd->dbopen_gen, ATOMIC_LOAD32(gbl_dbopen_gen), clnt->sql);
+    }
 
     do {
         /* clean old stats */

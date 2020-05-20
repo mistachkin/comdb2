@@ -6025,7 +6025,7 @@ retry_tran:
     create_sqlite_master();
     oldfile_list_clear();
 
-    BDB_BUMP_DBOPEN_GEN(NULL);
+    BDB_BUMP_DBOPEN_GEN(invalid, NULL);
 
     if ((rc = bdb_tran_commit(thedb->bdb_env, tran, &bdberr)) != 0) {
         logmsg(LOGMSG_FATAL, "%s: bdb_tran_commit returns %d\n", __func__, rc);

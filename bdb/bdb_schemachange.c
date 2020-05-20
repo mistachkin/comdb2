@@ -57,13 +57,14 @@ extern int sc_ready(void);
 
 /* bdb routines to support schema change */
 
-int bdb_bump_dbopen_gen(const char *message, const char *funcName,
-                        const char *fileName, int lineNo)
+int bdb_bump_dbopen_gen(const char *type, const char *message,
+                        const char *funcName, const char *fileName, int lineNo)
 {
     int rc = ATOMIC_ADD32(gbl_dbopen_gen, 1);
     if (message == NULL) message = "<null>";
-    logmsg(LOGMSG_USER, "DBOPEN_GEN is now %d (via %s, %s, line #%d): %s\n",
-           rc, funcName, fileName, lineNo, message);
+    logmsg(LOGMSG_USER,
+           "DBOPEN_GEN is now %d (for type %s via %s, %s, line #%d): %s\n",
+           rc, type, funcName, fileName, lineNo, message);
     return rc;
 }
 
@@ -271,7 +272,7 @@ int bdb_llog_scdone_tran(bdb_state_type *bdb_state, scdone_t type,
     DB_LSN lsn;
 
     if (!IS_QUEUEDB_ROLLOVER_SCHEMA_CHANGE_TYPE(type))
-        BDB_BUMP_DBOPEN_GEN(NULL);
+        BDB_BUMP_DBOPEN_GEN(type, NULL);
 
     if (bdb_state->name) {
         dtbl = alloca(sizeof(DBT));
@@ -314,7 +315,7 @@ int bdb_llog_scdone(bdb_state_type *bdb_state, scdone_t type, int wait,
                     int *bdberr)
 {
     if (!IS_QUEUEDB_ROLLOVER_SCHEMA_CHANGE_TYPE(type))
-        BDB_BUMP_DBOPEN_GEN(NULL);
+        BDB_BUMP_DBOPEN_GEN(type, NULL);
 
     return do_llog(bdb_state, type, bdb_state->name, wait, NULL, bdberr);
 }
@@ -323,7 +324,7 @@ int bdb_llog_scdone_origname(bdb_state_type *bdb_state, scdone_t type, int wait,
                              const char *origtable, int *bdberr)
 {
     if (!IS_QUEUEDB_ROLLOVER_SCHEMA_CHANGE_TYPE(type))
-        BDB_BUMP_DBOPEN_GEN(NULL);
+        BDB_BUMP_DBOPEN_GEN(type, NULL);
 
     return do_llog(bdb_state, type, bdb_state->name, wait, origtable, bdberr);
 }
