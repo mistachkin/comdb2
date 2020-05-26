@@ -55,8 +55,11 @@ typedef enum scdone {
 #define IS_QUEUEDB_ROLLOVER_SCHEMA_CHANGE_TYPE(a) \
     (((a) == add_queue_file) || ((a) == del_queue_file))
 
+#define BDB_STRINGIFY(x) BDB_STRINGIFY1(x)
+#define BDB_STRINGIFY1(x) #x
+
 #define BDB_BUMP_DBOPEN_GEN(type, msg) \
-    bdb_bump_dbopen_gen(#type, (msg), __func__, __FILE__, __LINE__)
+    bdb_bump_dbopen_gen(BDB_STRINGIFY(type), (msg), __func__, __FILE__, __LINE__)
 
 int bdb_bump_dbopen_gen(const char *type, const char *message,
                         const char *funcName, const char *fileName, int lineNo);
