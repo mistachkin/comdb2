@@ -57,6 +57,55 @@ extern int sc_ready(void);
 
 /* bdb routines to support schema change */
 
+static const char *const bdb_scdone_type_names[] = {
+    "invalid",                 // -1
+    "alter",                   //  0
+    "fastinit",                //  1
+    "add = fastinit",          //  2
+    "drop",                    //  3
+    "bulkimport",              //  4
+    "setcompr",                //  5
+    "luareload",               //  6
+    "sc_analyze",              //  7
+    "bthash",                  //  8
+    "rowlocks_on",             //  9
+    "rowlocks_on_master_only", // 10
+    "rowlocks_off",            // 11
+    "views",                   // 12
+    "llmeta_queue_add",        // 13
+    "llmeta_queue_alter",      // 14
+    "llmeta_queue_drop",       // 15
+    "genid48_enable",          // 16
+    "genid48_disable",         // 17
+    "lua_sfunc",               // 18
+    "lua_afunc",               // 19
+    "rename_table",            // 20
+    "change_stripe",           // 21
+    "user_view",               // 22
+    "add_queue_file",          // 23
+    "del_queue_file"           // 24
+};
+
+const char *bdb_get_scdone_str(scdone_t type)
+{
+    int maxIndex = sizeof(bdb_scdone_type_names) /
+                   sizeof(bdb_scdone_type_names[0]);
+    static __thread char buf[100];
+    if (type >= invalid && type <= del_queue_file) {
+        int index = ((int)type) + 1; // -1 ==> 0
+        if (index >= 0 && index <= maxIndex) {
+            snprintf(buf, sizeof(buf), "\"%s\" (%d)\0",
+                     bdb_scdone_type_names[index], (int)type);
+        } else {
+            snprintf(buf, sizeof(buf), "BAD_INDEX %d (%d)\0",
+                     index, (int)type);
+        }
+    } else {
+        snprintf(buf, sizeof(buf), "UNKNOWN (%d)\0", (int)type);
+    }
+    return buf;
+}
+
 int bdb_bump_dbopen_gen(const char *type, const char *message,
                         const char *funcName, const char *fileName, int lineNo)
 {

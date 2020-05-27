@@ -24,42 +24,42 @@ extern volatile uint32_t gbl_analyze_gen;
 extern volatile int gbl_views_gen;
 
 typedef enum scdone {
-    invalid = -1,
-    alter,
-    fastinit,
-    add = fastinit,
-    drop,
-    bulkimport,
-    setcompr,
-    luareload,
-    sc_analyze,
-    bthash,
-    rowlocks_on,
-    rowlocks_on_master_only,
-    rowlocks_off,
-    views,
-    llmeta_queue_add,
-    llmeta_queue_alter,
-    llmeta_queue_drop,
-    genid48_enable,
-    genid48_disable,
-    lua_sfunc,
-    lua_afunc,
-    rename_table,
-    change_stripe,
-    user_view,
-    add_queue_file,
-    del_queue_file
+    invalid = -1,            // -1
+    alter,                   //  0
+    fastinit,                //  1
+    add = fastinit,          //  2
+    drop,                    //  3
+    bulkimport,              //  4
+    setcompr,                //  5
+    luareload,               //  6
+    sc_analyze,              //  7
+    bthash,                  //  8
+    rowlocks_on,             //  9
+    rowlocks_on_master_only, // 10
+    rowlocks_off,            // 11
+    views,                   // 12
+    llmeta_queue_add,        // 13
+    llmeta_queue_alter,      // 14
+    llmeta_queue_drop,       // 15
+    genid48_enable,          // 16
+    genid48_disable,         // 17
+    lua_sfunc,               // 18
+    lua_afunc,               // 19
+    rename_table,            // 20
+    change_stripe,           // 21
+    user_view,               // 22
+    add_queue_file,          // 23
+    del_queue_file           // 24
 } scdone_t;
 
 #define IS_QUEUEDB_ROLLOVER_SCHEMA_CHANGE_TYPE(a) \
     (((a) == add_queue_file) || ((a) == del_queue_file))
 
-#define BDB_STRINGIFY(x) BDB_STRINGIFY1(x)
-#define BDB_STRINGIFY1(x) #x
-
 #define BDB_BUMP_DBOPEN_GEN(type, msg) \
-    bdb_bump_dbopen_gen(BDB_STRINGIFY(type), (msg), __func__, __FILE__, __LINE__)
+    bdb_bump_dbopen_gen(bdb_get_scdone_str(type), (msg), \
+                        __func__, __FILE__, __LINE__)
+
+const char *bdb_get_scdone_str(scdone_t type);
 
 int bdb_bump_dbopen_gen(const char *type, const char *message,
                         const char *funcName, const char *fileName, int lineNo);
