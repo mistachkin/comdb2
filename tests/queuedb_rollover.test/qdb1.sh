@@ -31,7 +31,7 @@ done | cdb2sql --host $SP_HOST $SP_OPTIONS - >/dev/null
 
 for ((i=1;i<96;++i)); do
     echo "exec procedure dml2(${i})"
-done | cdb2sql --host $SP_HOST $SP_OPTIONS
+done | cdb2sql $SP_OPTIONS
 
 if [ $SP_HOST == `hostname` ]; then
     cp ${TESTDIR}/logs/${DBNAME}.db qdb1-log1.log
