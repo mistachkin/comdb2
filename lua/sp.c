@@ -48,7 +48,7 @@
 #include <bdb_queue.h>
 #include <strbuf.h>
 
-#include <cson_amalgamation_core.h>
+#include <cson.h>
 #include <translistener.h>
 #include <net_types.h>
 #include <locks.h>
@@ -4010,7 +4010,7 @@ static int db_json_to_table(Lua lua)
     }
     const char *json = luabb_tostring(lua, 2);
     cson_value *cson = NULL;
-    if ((rc = cson_parse_string(&cson, json, strlen(json), NULL, NULL)) != 0) {
+    if ((rc = cson_parse_string(&cson, json, strlen(json))) != 0) {
         luaL_error(lua, "Parsing JSON rc:%d err:%s", rc, cson_rc_string(rc));
     }
     lua_newtable(lua);
@@ -4107,10 +4107,9 @@ static int db_table_to_json(Lua L)
         }
         lua_pushnil(L); // CONV_REASON_UTF8_NIL
     } else {
-        cson_buffer buf = cson_buffer_empty;
-        cson_output_buffer(cson, &buf, NULL);
+        cson_buffer buf;
+        cson_output_buffer(cson, &buf);
         lua_pushstring(L, (char *)buf.mem);
-        cson_buffer_reserve(&buf, 0);
         cson_free_value(cson);
     }
     // non-zero rc if nil'd, truncated or hexified cstring
@@ -5052,9 +5051,7 @@ static SP create_sp(char **err)
 static int cson_to_table(Lua, cson_value *);
 static int cson_push_value(Lua lua, cson_value *v)
 {
-    if (cson_value_is_undef(v)) {
-        lua_pushnil(lua); // TODO: this just disappers in lua
-    } else if (cson_value_is_null(v)) {
+    if (cson_value_is_null(v)) {
         luabb_pushnull(lua, DBTYPES_INTEGER);
     } else if (cson_value_is_bool(v)) {
         lua_pushboolean(lua, cson_value_get_bool(v));
@@ -5439,8 +5436,8 @@ static cson_value *table_to_cson(Lua L, int lvl, json_conv *conv)
                     conv->error = "invalid utf-8 cstring in 'table_to_json'";
                     conv->reason |= CONV_REASON_UTF8_HEX;
                     size_t slen = strlen(s) + 1; // include terminating null
-                    size_t hexlen = slen * 2 + 1;
-                    hexstr = malloc(hexlen);
+                    size_t hexlen = slen * 2;
+                    hexstr = malloc(hexlen + 1);
                     util_tohex(hexstr, s, slen);
                     type = "hexstring";
                     s = hexstr;

@@ -471,7 +471,7 @@ static struct newsql_appdata *get_newsql_appdata(struct sqlclntstate *clnt,
     return appdata;
 oom:
     logmsg(LOGMSG_ERROR,
-           "%s:%d failed to (re)alloc %lu bytes (errno: %d, reason: %s)\n",
+           "%s:%d failed to (re)alloc %zu bytes (errno: %d, reason: %s)\n",
            __func__, __LINE__, alloc_sz, errno, strerror(errno));
     return NULL;
 }
@@ -1354,17 +1354,11 @@ static int newsql_get_high_availability(struct sqlclntstate *clnt)
     /* MOHIT -- Check here that we are in high availablity, its cdb2api, and
      * is its a retry. */
     if (clnt->ctrl_sqlengine == SQLENG_NORMAL_PROCESS) {
-        if (sqlquery->retry) {
-            clnt->num_retry = sqlquery->retry;
-            if (sqlquery->snapshot_info) {
-                clnt->snapshot_file = sqlquery->snapshot_info->file;
-                clnt->snapshot_offset = sqlquery->snapshot_info->offset;
-            } else {
-                clnt->snapshot_file = 0;
-                clnt->snapshot_offset = 0;
-            }
+        clnt->num_retry = sqlquery->retry;
+        if (sqlquery->retry && sqlquery->snapshot_info) {
+            clnt->snapshot_file = sqlquery->snapshot_info->file;
+            clnt->snapshot_offset = sqlquery->snapshot_info->offset;
         } else {
-            clnt->num_retry = 0;
             clnt->snapshot_file = 0;
             clnt->snapshot_offset = 0;
         }
@@ -1672,7 +1666,7 @@ static int process_set_commands(struct dbenv *dbenv, struct sqlclntstate *clnt,
                     sqlite3Dequote(sqlstr);
                     if (strlen(sqlstr) >= sizeof(clnt->password)) {
                         snprintf(err, sizeof(err),
-                                 "set password: password length exceeds %lu "
+                                 "set password: password length exceeds %zu "
                                  "characters",
                                  sizeof(clnt->password) - 1);
                         rc = ii + 1;

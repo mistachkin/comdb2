@@ -50,6 +50,11 @@ static char main_prompt[MAX_DBNAME_LENGTH + 2];
 static unsigned char gbl_in_stmt = 0;
 static unsigned char gbl_sent_cancel_cnonce = 0;
 
+static char *delimstr = (char *)"\n";
+
+// For performance
+static int delim_len = 1;
+
 /* display modes */
 enum {
     DISP_CLASSIC = 1 << 0, /* default output */
@@ -131,6 +136,8 @@ static const char *usage_text =
     " -c, --cdb2cfg FL    Set the config file to FL\n"
     "     --cost          Log the cost of query in db trace files\n"
     "     --debugtrace    Set debug trace flag on api handle\n"
+    " -d, --delim str     Set string used to separate two sql statements read "
+    "from a file or input stream\n"
     " -f, --file FL       Read queries from the specified file FL\n"
     " -h, --help          Help on usage \n"
     " -n, --host HOST     Host to connect to and run query.\n"
@@ -472,6 +479,20 @@ static bool skip_history(const char *line)
     return true;
 }
 
+static bool has_delimiter(char *line, int len, char *delimiter, int dlen)
+{
+    if (dlen > len)
+        return false;
+    while (dlen > 0) {
+        if (delimiter[dlen - 1] != line[len - 1]) {
+            return false;
+        }
+        len--;
+        dlen--;
+    }
+    return true;
+}
+
 static char *read_line()
 {
     static char *line = NULL;
@@ -486,17 +507,33 @@ static char *read_line()
             add_history(line);
         return line;
     }
+    int total_len = 0;
+    int n = -1;
     static size_t sz = 0;
-    ssize_t n = getline(&line, &sz, stdin);
-    if (n == -1) {
+    static char *getline = NULL;
+    while ((n = getdelim(&getline, &sz, delimstr[delim_len - 1], stdin)) !=
+           -1) {
+        if (n > 0) {
+            total_len += n;
+            line = (char *)realloc(line, total_len + 1);
+            strcpy(line + total_len - n, getline);
+            if (has_delimiter(line, total_len, delimstr, delim_len) == true) {
+                line[total_len - delim_len] = 0;
+                return line;
+            }
+        }
+    }
+    if (n == -1 && total_len == 0) {
         if (line) {
             free(line);
             line = NULL;
         }
+        if (getline) {
+            free(getline);
+            getline = NULL;
+        }
         return NULL;
     }
-    if (line[n - 1] == '\n')
-        line[n - 1] = 0;
     return line;
 }
 
@@ -521,8 +558,10 @@ int get_type(const char **sqlstr)
     checkfortype(*sqlstr, "REAL", CDB2_REAL);
     checkfortype(*sqlstr, "CSTRING", CDB2_CSTRING);
     checkfortype(*sqlstr, "BLOB", CDB2_BLOB);
+    checkfortype(*sqlstr, "DATETIMEUS", CDB2_DATETIMEUS);
     checkfortype(*sqlstr, "DATETIME", CDB2_DATETIME);
     checkfortype(*sqlstr, "INTERVALYM", CDB2_INTERVALYM);
+    checkfortype(*sqlstr, "INTERVALDSUS", CDB2_INTERVALDSUS);
     checkfortype(*sqlstr, "INTERVALDS", CDB2_INTERVALDS);
     return -1;
 }
@@ -559,6 +598,26 @@ int fromhex(uint8_t *out, const uint8_t *in, size_t len)
     return 0;
 }
 
+const char *cdb2_tp_str[] = {"???",
+                             "CDB2_INTEGER",
+                             "CDB2_REAL",
+                             "CDB2_CSTRING",
+                             "CDB2_BLOB",
+                             "???",
+                             "CDB2_DATETIME",
+                             "CDB2_INTERVALYM",
+                             "CDB2_INTERVALDS",
+                             "CDB2_DATETIMEUS",
+                             "CDB2_INTERVALDSUS"};
+
+inline const char *cdb2_type_str(int type)
+{
+    if (type < 1 || type > CDB2_INTERVALDSUS)
+        return "???";
+
+    return cdb2_tp_str[type];
+}
+
 void *get_val(const char **sqlstr, int type, int *vallen)
 {
     while (isspace(**sqlstr))
@@ -591,16 +650,39 @@ void *get_val(const char **sqlstr, int type, int *vallen)
         cdb2_client_datetime_t *dt =
             (cdb2_client_datetime_t *) calloc(sizeof(cdb2_client_datetime_t),
                                               1);
-        int rc = sscanf(str, "%04d-%02d-%02dT%02d:%02d:%02d", &dt->tm.tm_year,
-                        &dt->tm.tm_mon, &dt->tm.tm_mday, &dt->tm.tm_hour,
-                        &dt->tm.tm_min, &dt->tm.tm_sec);
+        int rc =
+            sscanf(str, "%04d-%02d-%02dT%02d:%02d:%02d.%03d", &dt->tm.tm_year,
+                   &dt->tm.tm_mon, &dt->tm.tm_mday, &dt->tm.tm_hour,
+                   &dt->tm.tm_min, &dt->tm.tm_sec, &dt->msec);
         /* timezone not supported for now */
-        if (rc != 6) {
+        if (rc != 6 && rc != 7) {
             fprintf(stderr,
-                    "Invalid datetime (need format YYYY-MM-ddThh:mm:ss\n");
+                    "Invalid datetime (need format yyyy-mm-ddTHH:MM:SS[.fff], "
+                    "rc=%d)\n",
+                    rc);
             return NULL;
         }
-        dt->msec = 0;
+        dt->tzname[0] = 0;
+        dt->tm.tm_year -= 1900;
+        dt->tm.tm_mon--;
+
+        *vallen = sizeof(*dt);
+        return dt;
+    } else if (type == CDB2_DATETIMEUS) {
+        cdb2_client_datetimeus_t *dt = (cdb2_client_datetimeus_t *)calloc(
+            sizeof(cdb2_client_datetimeus_t), 1);
+        int rc =
+            sscanf(str, "%04d-%02d-%02dT%02d:%02d:%02d.%06d", &dt->tm.tm_year,
+                   &dt->tm.tm_mon, &dt->tm.tm_mday, &dt->tm.tm_hour,
+                   &dt->tm.tm_min, &dt->tm.tm_sec, &dt->usec);
+        /* timezone not supported for now */
+        if (rc != 6 && rc != 7) {
+            fprintf(stderr,
+                    "Invalid datetime (need format "
+                    "yyyy-mm-ddTHH:MM:SS[.ffffff], rc=%d\n)",
+                    rc);
+            return NULL;
+        }
         dt->tzname[0] = 0;
         dt->tm.tm_year -= 1900;
         dt->tm.tm_mon--;
@@ -634,7 +716,7 @@ void *get_val(const char **sqlstr, int type, int *vallen)
         *vallen = unexlen;
         return unexpanded;
     } else {
-        fprintf(stderr, "Type %d not yet supported\n", type);
+        fprintf(stderr, "Type %s not yet supported\n", cdb2_type_str(type));
     }
     return NULL;
 }
@@ -1205,8 +1287,9 @@ int process_bind(const char *sql)
     if (type < 0 || !isspace(*sql)) {
         fprintf(stderr, "Usage: @bind <type> <paramname> <value>, with type "
                         "one of the following:\n"
-                        "CDB2_{INTEGER,REAL,CSTRING,BLOB,DATETIME,INTERVALYM,"
-                        "INTERVALDS}\n");
+                        "CDB2_{INTEGER,REAL,CSTRING,BLOB,DATETIME[,US]"
+                        // uncomment when supported: ",INTERVAL[YM,DS,DSUS]"
+                        "}\n");
         fprintf(stderr, "[%s] rc %d\n", copy_sql, type);
         return type;
     }
@@ -1379,7 +1462,8 @@ static int run_statement(const char *sql, int ntypes, int *types,
         } else if (printmode & DISP_TABS) {
             fprintf(out, "\n");
         } else if (printmode & DISP_GENSQL) {
-            fprintf(out, ");\n");
+            fprintf(out, ");");
+            fprintf(out, "%s", delimstr);
         } else if (printmode & DISP_TABULAR) {
             /* Noop */
         }
@@ -1699,12 +1783,13 @@ int main(int argc, char *argv[])
         {"cdb2cfg", required_argument, NULL, 'c'},
         {"file", required_argument, NULL, 'f'},
         {"gensql", required_argument, NULL, 'g'},
+        {"delim", required_argument, NULL, 'd'},
         {"type", required_argument, NULL, 't'},
         {"host", required_argument, NULL, 'n'},
         {"minretries", required_argument, NULL, 'R'},
         {0, 0, 0, 0}};
 
-    while ((c = bb_getopt_long(argc, argv, (char *) "hsvr:p:c:f:g:t:n:R:",
+    while ((c = bb_getopt_long(argc, argv, (char *)"hsvr:p:d:c:f:g:t:n:R:",
                                long_options, &opt_indx)) != -1) {
         switch (c) {
         case 0:
@@ -1738,6 +1823,10 @@ int main(int argc, char *argv[])
         case 'g':
             printmode = DISP_GENSQL;
             gensql_tbl = optarg;
+            break;
+        case 'd':
+            delimstr = optarg;
+            delim_len = strlen(delimstr);
             break;
         case 't':
             dbtype = optarg;
