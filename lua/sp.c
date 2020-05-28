@@ -65,6 +65,7 @@
 #include <tohex.h>
 #include <ctrace.h>
 #include <bb_oscompat.h>
+#include "comdb2_atomic.h"
 
 #ifdef WITH_RDKAFKA    
 
@@ -83,6 +84,8 @@ extern int gbl_notimeouts;
 extern int gbl_epoch_time;
 extern int gbl_allow_lua_print;
 extern int gbl_allow_lua_dynamic_libs;
+extern int gbl_lua_prepare_max_retries;
+extern int gbl_lua_prepare_retry_sleep;
 extern int comdb2_sql_tick();
 
 char *gbl_break_spname;
@@ -2263,13 +2266,27 @@ static int lua_prepare_sql_int(Lua L, SP sp, const char *sql,
                                sqlite3_stmt **stmt, struct sql_state *rec,
                                int flags)
 {
-    struct errstat err = {0};
+    int maxRetries = ATOMIC_LOAD32(gbl_lua_prepare_max_retries);
+    int nRetry = 0;
+    struct errstat err;
     struct sql_state rec_lcl = {0};
     struct sql_state *rec_ptr = rec ? rec : &rec_lcl;
     rec_ptr->sql = sql;
-    sp->rc = sp->initial ? get_prepared_stmt(sp->thd, sp->clnt, rec_ptr, &err, flags)
-                         : get_prepared_stmt_try_lock(sp->thd, sp->clnt, rec_ptr, &err, flags);
+retry:
+    memset(&err, 0, sizeof(struct errstat));
+    if (sp->initial) {
+        sp->rc = get_prepared_stmt(sp->thd, sp->clnt, rec_ptr, &err, flags);
+    } else {
+        sp->rc = get_prepared_stmt_try_lock(sp->thd, sp->clnt, rec_ptr, &err,
+                                            flags);
+    }
     sp->initial = 0;
+    if ((sp->rc == SQLITE_SCHEMA) && (maxRetries != 0) &&
+            ((maxRetries == -1) || (nRetry++ < maxRetries))) {
+        int sleepms = ATOMIC_LOAD32(gbl_lua_prepare_retry_sleep);
+        if (sleepms >= 0) poll(NULL, 0, sleepms);
+        goto retry;
+    }
     if (sp->rc == 0) {
         *stmt = rec_ptr->stmt;
         rec_ptr->sql = sqlite3_sql(*stmt);

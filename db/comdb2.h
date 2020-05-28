@@ -3444,6 +3444,8 @@ extern int gbl_accept_on_child_nets;
 extern int gbl_disable_etc_services_lookup;
 extern int gbl_sql_random_release_interval;
 extern int gbl_debug_queuedb;
+extern int gbl_lua_prepare_max_retries;
+extern int gbl_lua_prepare_retry_sleep;
 
 /**
  * Schema change that touches a table in any way updates its version
