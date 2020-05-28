@@ -1948,11 +1948,12 @@ REGISTER_TUNABLE("lua_prepare_retries",
                  "Maximum number of times to retry SQL query preparation "
                  "when faced with 'database schema has changed' errors in "
                  "the Lua subsystem.  (Default: 0)", TUNABLE_INTEGER,
-                 &gbl_lua_prepare_max_retries, 0, NULL, NULL, NULL, NULL);
+                 &gbl_lua_prepare_max_retries, EXPERIMENTAL, NULL, NULL, NULL,
+                 NULL);
 
 REGISTER_TUNABLE("lua_prepare_retry_sleep",
                  "The number of milliseconds in between SQL query preparation "
                  "retries in the Lua subsystem.  (Default: 200)",
-                 TUNABLE_INTEGER, &gbl_lua_prepare_retry_sleep, 0, NULL,
-                 NULL, NULL, NULL);
+                 TUNABLE_INTEGER, &gbl_lua_prepare_retry_sleep, EXPERIMENTAL,
+                 NULL, NULL, NULL, NULL);
 #endif /* _DB_TUNABLES_H */

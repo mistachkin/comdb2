@@ -45,7 +45,6 @@
 #include "logmsg.h"
 #include "priority_queue.h"
 #include "comdb2_atomic.h"
-#include <unistd.h>
 
 #ifdef MONITOR_STACK
 #include "comdb2_pthread_create.h"
@@ -475,25 +474,6 @@ void thdpool_command_to_all(char *line, int lline, int st)
     Pthread_mutex_unlock(&pool_list_lk);
 }
 
-/*
-** WARNING: This function will block the calling thread, potentially forever,
-**          be very careful using it.
-*/
-static void thdpool_sync(struct thdpool *pool, int minthd, int maxthd)
-{
-    while (1) {
-        if ((minthd >= 0) && (ATOMIC_LOAD32(pool->nactthd) < minthd)) {
-            sleep(1);
-            continue;
-        }
-        if ((maxthd >= 0) && (ATOMIC_LOAD32(pool->nactthd) > maxthd)) {
-            sleep(1);
-            continue;
-        }
-        break;
-    }
-}
-
 void thdpool_process_message(struct thdpool *pool, char *line, int lline,
                              int st)
 {
@@ -502,11 +482,6 @@ void thdpool_process_message(struct thdpool *pool, char *line, int lline,
     tok = segtok(line, lline, &st, &ltok);
     if (tokcmp(tok, ltok, "stat") == 0) {
         thdpool_print_stats(stdout, pool);
-    } else if (tokcmp(tok, ltok, "restart") == 0) {
-        thdpool_stop(pool);
-        thdpool_sync(pool, -1, 1);
-        thdpool_resume(pool);
-        logmsg(LOGMSG_USER, "Pool [%s] restarted\n", pool->name);
     } else if (tokcmp(tok, ltok, "stop") == 0) {
         thdpool_stop(pool);
         logmsg(LOGMSG_USER, "Pool [%s] stopped\n", pool->name);
@@ -591,7 +566,6 @@ void thdpool_process_message(struct thdpool *pool, char *line, int lline,
 
     } else if (tokcmp(tok, ltok, "help") == 0) {
         logmsg(LOGMSG_USER, "Pool [%s] commands:-\n", pool->name);
-        logmsg(LOGMSG_USER, "  restart   -            stop threads and then resume pool\n");
         logmsg(LOGMSG_USER, "  stop      -            stop all threads\n");
         logmsg(LOGMSG_USER, "  resume    -            resume all threads\n");
         logmsg(LOGMSG_USER, "  mint #    -            set desired minimum number of threads\n");
