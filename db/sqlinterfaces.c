@@ -1555,12 +1555,6 @@ static void log_cost(struct reqlogger *logger, int64_t cost, int64_t rows) {
 int handle_sql_begin(struct sqlthdstate *thd, struct sqlclntstate *clnt,
                      enum trans_clntcomm sideeffects)
 {
-    if (thd->dbopen_gen != ATOMIC_LOAD32(gbl_dbopen_gen)) {
-        logmsg(LOGMSG_USER,
-               "handle_sql_begin: STALE THREAD %d vs %d: %s\n",
-               thd->dbopen_gen, ATOMIC_LOAD32(gbl_dbopen_gen), clnt->sql);
-    }
-
     Pthread_mutex_lock(&clnt->wait_mutex);
     /* if this is a new chunk, do not stop the hearbeats */
     if (sideeffects != TRANS_CLNTCOMM_CHUNK)
@@ -1597,11 +1591,6 @@ done:
 static int handle_sql_wrongstate(struct sqlthdstate *thd,
                                  struct sqlclntstate *clnt)
 {
-    if (thd->dbopen_gen != ATOMIC_LOAD32(gbl_dbopen_gen)) {
-        logmsg(LOGMSG_USER,
-               "handle_sql_wrongstate: STALE THREAD %d vs %d: %s\n",
-               thd->dbopen_gen, ATOMIC_LOAD32(gbl_dbopen_gen), clnt->sql);
-    }
 
     sql_set_sqlengine_state(clnt, __FILE__, __LINE__, SQLENG_NORMAL_PROCESS);
 
@@ -2078,12 +2067,6 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
                               struct sqlclntstate *clnt,
                               enum trans_clntcomm sideeffects)
 {
-    if (thd->dbopen_gen != ATOMIC_LOAD32(gbl_dbopen_gen)) {
-        logmsg(LOGMSG_USER,
-               "handle_sql_commitrollback: STALE THREAD %d vs %d: %s\n",
-               thd->dbopen_gen, ATOMIC_LOAD32(gbl_dbopen_gen), clnt->sql);
-    }
-
     int rc = 0;
     int outrc = 0;
 
@@ -2844,32 +2827,16 @@ static int check_thd_gen(struct sqlthdstate *thd, struct sqlclntstate *clnt)
                cached_analyze_gen, thd->views_gen, gbl_views_gen);
 
     if (thd->dbopen_gen != ATOMIC_LOAD32(gbl_dbopen_gen)) {
-        logmsg(LOGMSG_ERROR,
-               "SQLITE_SCHEMA: thd dbopen=%d vs %d thd analyze %d vs %d views %d vs %d\n",
-               thd->dbopen_gen, ATOMIC_LOAD32(gbl_dbopen_gen), thd->analyze_gen,
-               cached_analyze_gen, thd->views_gen, gbl_views_gen);
-
         return SQLITE_SCHEMA;
     }
     if (thd->analyze_gen != cached_analyze_gen) {
         int ret;
         delete_prepared_stmts(thd);
         ret = reload_analyze(thd, clnt, cached_analyze_gen);
-
-        logmsg(LOGMSG_ERROR,
-               "RC (%d): thd dbopen=%d vs %d thd analyze %d vs %d views %d vs %d\n",
-               ret, thd->dbopen_gen, ATOMIC_LOAD32(gbl_dbopen_gen), thd->analyze_gen,
-               cached_analyze_gen, thd->views_gen, gbl_views_gen);
-
         return ret;
     }
 
     if (thd->views_gen != gbl_views_gen) {
-        logmsg(LOGMSG_ERROR,
-               "SQLITE_SCHEMA_REMOTE: thd dbopen=%d vs %d thd analyze %d vs %d views %d vs %d\n",
-               thd->dbopen_gen, ATOMIC_LOAD32(gbl_dbopen_gen), thd->analyze_gen,
-               cached_analyze_gen, thd->views_gen, gbl_views_gen);
-
         return SQLITE_SCHEMA_REMOTE;
     }
 
@@ -4220,11 +4187,6 @@ static void handle_stored_proc(struct sqlthdstate *thd,
     free_original_normalized_sql(clnt);
     normalize_stmt_and_store(clnt, NULL, 1);
 
-    if (thd->dbopen_gen != ATOMIC_LOAD32(gbl_dbopen_gen)) {
-        logmsg(LOGMSG_USER, "handle_stored_proc: STALE THREAD %d vs %d: %s\n",
-               thd->dbopen_gen, ATOMIC_LOAD32(gbl_dbopen_gen), clnt->sql);
-    }
-
     memset(&clnt->spcost, 0, sizeof(struct sql_hist_cost));
     int rc = exec_procedure(thd, clnt, &errstr);
     if (rc) {
@@ -4262,12 +4224,6 @@ int handle_sqlite_requests(struct sqlthdstate *thd, struct sqlclntstate *clnt)
     struct sql_state rec = {0};
     rec.sql = clnt->sql;
     char *allocd_str = NULL;
-
-    if (thd->dbopen_gen != ATOMIC_LOAD32(gbl_dbopen_gen)) {
-        logmsg(LOGMSG_USER,
-               "handle_sqlite_requests: STALE THREAD %d vs %d: %s\n",
-               thd->dbopen_gen, ATOMIC_LOAD32(gbl_dbopen_gen), clnt->sql);
-    }
 
     do {
         /* clean old stats */
