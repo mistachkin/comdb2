@@ -27,29 +27,29 @@ typedef enum scdone {
     invalid = -1,            // -1
     alter,                   //  0
     fastinit,                //  1
-    add = fastinit,          //  2
-    drop,                    //  3
-    bulkimport,              //  4
-    setcompr,                //  5
-    luareload,               //  6
-    sc_analyze,              //  7
-    bthash,                  //  8
-    rowlocks_on,             //  9
-    rowlocks_on_master_only, // 10
-    rowlocks_off,            // 11
-    views,                   // 12
-    llmeta_queue_add,        // 13
-    llmeta_queue_alter,      // 14
-    llmeta_queue_drop,       // 15
-    genid48_enable,          // 16
-    genid48_disable,         // 17
-    lua_sfunc,               // 18
-    lua_afunc,               // 19
-    rename_table,            // 20
-    change_stripe,           // 21
-    user_view,               // 22
-    add_queue_file,          // 23
-    del_queue_file           // 24
+    add = fastinit,          //  1
+    drop,                    //  2
+    bulkimport,              //  3
+    setcompr,                //  4
+    luareload,               //  5
+    sc_analyze,              //  6
+    bthash,                  //  7
+    rowlocks_on,             //  8
+    rowlocks_on_master_only, //  9
+    rowlocks_off,            // 10
+    views,                   // 11
+    llmeta_queue_add,        // 12
+    llmeta_queue_alter,      // 13
+    llmeta_queue_drop,       // 14
+    genid48_enable,          // 15
+    genid48_disable,         // 16
+    lua_sfunc,               // 17
+    lua_afunc,               // 18
+    rename_table,            // 19
+    change_stripe,           // 20
+    user_view,               // 21
+    add_queue_file,          // 22
+    del_queue_file           // 23
 } scdone_t;
 
 #define IS_QUEUEDB_ROLLOVER_SCHEMA_CHANGE_TYPE(a) \
