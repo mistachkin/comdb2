@@ -171,7 +171,6 @@ cson_array *get_bind_array(struct reqlogger *logger, int nfields)
 
     cson_array *arr = cson_value_get_array(bind_list);
 
-    cson_array_reserve(arr, nfields);
     return arr;
 }
 
@@ -294,7 +293,6 @@ void eventlog_tables(cson_object *obj, const struct reqlogger *logger)
 
     cson_value *tables = cson_value_new_array();
     cson_array *arr = cson_value_get_array(tables);
-    cson_array_reserve(arr, logger->ntables);
 
     for (int i = 0; i < logger->ntables; i++) {
         cson_value *v = cson_value_new_string(logger->sqltables[i],
@@ -356,7 +354,6 @@ static void eventlog_context(cson_object *obj, const struct reqlogger *logger)
     if (logger->ncontext > 0) {
         cson_value *contexts = cson_value_new_array();
         cson_array *arr = cson_value_get_array(contexts);
-        cson_array_reserve(arr, logger->ncontext);
         for (int i = 0; i < logger->ncontext; i++) {
             cson_value *v = cson_value_new_string(logger->context[i],
                                                   strlen(logger->context[i]));
@@ -375,7 +372,6 @@ static void eventlog_path(cson_object *obj, const struct reqlogger *logger)
 
     cson_value *components = cson_value_new_array();
     cson_array *arr = cson_value_get_array(components);
-    cson_array_reserve(arr, logger->path->n_components);
 
     for (int i = 0; i < logger->path->n_components; i++) {
         cson_value *component;
@@ -426,8 +422,7 @@ static void eventlog_add_newsql(const struct reqlogger *logger)
             cson_value_new_string(expanded_fp, FINGERPRINTSZ * 2));
 
     /* yes, this can spill the file to beyond the configured size - we need
-       this
-       event to be in the same file as the event its being logged for */
+       this event to be in the same file as the event its being logged for */
     cson_output(newval, write_json, eventlog);
     if (eventlog_verbose) cson_output_FILE(newval, stdout);
     cson_value_free(newval);
@@ -711,7 +706,6 @@ void log_deadlock_cycle(locker_info *idmap, u_int32_t *deadmap,
     }
     cson_value *dd_list = cson_value_new_array();
     cson_array *arr = cson_value_get_array(dd_list);
-    cson_array_reserve(arr, nlockers);
     for (int j = 0; j < nlockers; j++) {
         if (!ISSET_MAP(deadmap, j))
             continue;

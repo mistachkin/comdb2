@@ -127,11 +127,13 @@ struct cson_value {
     int sub_type;
     int value_bytes;
     char *value_text;
+    char value_buf[128];
+    int modified;
+    JsonString output;
     struct {
         cson_value **slots;
         int capacity;
         int used;
-        int modified;
     } replace;
     JsonParse parse;
     union {
@@ -251,15 +253,18 @@ static void cson__free_get_list(struct get_list *get_list)
 }
 static void cson__reset(cson_value *val)
 {
+    jsonReset(&val->output);
     cson__reset_slots(val);
     free(val->replace.slots);
     val->replace.used = 0;
     val->replace.capacity = 0;
     val->replace.slots = NULL;
 
-    free(val->value_text);
-    val->value_text = NULL;
-    val->value_bytes = 0;
+    if (val->value_text != val->value_buf) {
+        free(val->value_text);
+        val->value_text = NULL;
+        val->value_bytes = 0;
+    }
 
     if (!val->sub_type) {
         return;
@@ -279,22 +284,32 @@ static void cson__reset(cson_value *val)
     }
     jsonParseReset(&val->parse);
 }
+static char *strncpy0(char *dest, const char *src, int n)
+{
+    strncpy(dest, src, n);
+    dest[n] = 0;
+    return dest;
+}
 static cson_value *cson__parse(cson_value *val, const char *json_in, int n)
 {
     cson__reset(val);
-    char *json = strndup(json_in, n);
+    char *json = n < sizeof(val->value_buf)
+                     ? strncpy0(val->value_buf, json_in, n)
+                     : strndup(json_in, n);
     JsonParse *parse = &val->parse;
     if (jsonParse(parse, NULL, json)) {
-        free(json);
+        if (json != val->value_buf) {
+            free(json);
+        }
         return NULL;
     }
     if (parse->nNode == 0)
         abort();
-    val->replace.modified = 0;
+    val->modified = 0;
     val->sql_type = SQLITE_TEXT;
     val->sub_type = JSON_SUBTYPE;
     val->value_text = json;
-    val->value_bytes = strlen(json);
+    val->value_bytes = n;
     switch (cson__type(val)) {
     case JSON_ARRAY:
        val->u.arr.value = val;
@@ -345,25 +360,30 @@ static void cson__grow_slots(cson_value *val)
         val->replace.slots = realloc(val->replace.slots, sz);
     }
 }
-static void cson__render(cson_value *val)
+static void cson__output(cson_value *val)
 {
-    JsonString s;
-    jsonInit(&s, NULL);
-    jsonRenderNode(val->parse.aNode, &s, val->replace.slots);
+    jsonReset(&val->output);
+    jsonRenderNode(val->parse.aNode, &val->output, val->replace.slots);
     if (cson__type(val) == JSON_ARRAY && val->u.arr.str.nUsed) {
         // process appended values
         cson_array *arr = cson_value_get_array(val);
         JsonString *suffix = &arr->str;
-        --s.nUsed; // remove trailing ]
-        jsonAppendSeparator(&s);
-        jsonAppendRaw(&s, suffix->zBuf, suffix->nUsed);
-        jsonAppendChar(&s, ']');
+        --val->output.nUsed; // remove trailing ]
+        jsonAppendSeparator(&val->output);
+        jsonAppendRaw(&val->output, suffix->zBuf, suffix->nUsed);
+        jsonAppendChar(&val->output, ']');
         jsonReset(suffix);
     }
-    if (val->replace.modified) {
-        cson__parse(val, s.zBuf, s.nUsed);
-    }
-    jsonReset(&s);
+}
+static void cson__render(cson_value *val)
+{
+    if (!val->modified) return;
+    cson__output(val);
+    JsonString tmp = val->output;
+    if (tmp.bStatic) tmp.zBuf = tmp.zSpace;
+    jsonInit(&val->output, NULL);
+    cson__parse(val, tmp.zBuf, tmp.nUsed);
+    jsonReset(&tmp);
 }
 static int cson__set(cson_value *val, char *path, cson_value *v)
 {
@@ -373,7 +393,7 @@ static int cson__set(cson_value *val, char *path, cson_value *v)
     if (parse->nErr || !node) {
         return -1;
     }
-    val->replace.modified = 1;
+    val->modified = 1;
     if (v == NULL) {
         node->jnFlags |= JNODE_REMOVE;
         return 0;
@@ -470,13 +490,10 @@ cson_array *cson_value_get_array(cson_value *val)
 }
 int cson_array_set(cson_array *ar, unsigned int ndx, cson_value *v)
 {
-    if (ar->str.nUsed) {
-        cson__render(ar->value);
-    }
+    cson__render(ar->value);
     char path[256];
     sprintf(path, "$[%d]", ndx);
     cson__set(ar->value, path, v);
-    cson__render(ar->value);
     return 0;
 }
 cson_value *cson_array_get(cson_array *ar, unsigned int pos)
@@ -493,24 +510,17 @@ cson_value *cson_array_get(cson_array *ar, unsigned int pos)
 }
 unsigned int cson_array_length_get(cson_array const *ar)
 {
-    if (ar->str.nUsed) {
-        cson__render(ar->value);
-    }
+    cson__render(ar->value);
     unsigned int n = 0;
     JsonNode *node = ar->value->parse.aNode;
     for (int i = 1; i <= node->n; n++) {
         i += jsonNodeSize(&node[i]);
     }
-    if (node->jnFlags & JNODE_APPEND) {
-        n += ar->value->replace.used;
-    }
     return n;
 }
 int cson_array_append(cson_array *ar, cson_value *v)
 {
-    ar->value->replace.modified = 1;
-    /* My initial plan was to use $[#].
-     * It performs poorly when appending large number number of values. */
+    ar->value->modified = 1;
     if (v->sub_type) {
         cson__render(v);
     }
@@ -519,18 +529,18 @@ int cson_array_append(cson_array *ar, cson_value *v)
     cson_value_free(v);
     return 0;
 }
-int cson_array_reserve(cson_array *ar, unsigned int size)
-{
-    return 0;
-}
 cson_value *cson_value_new_integer(cson_int_t v)
 {
     cson_value *val = calloc(1, sizeof(cson_value));
     val->sql_type = SQLITE_INTEGER;
     val->u.num = v;
-    char buf[128];
-    val->value_bytes = sprintf(buf, "%" PRId64, v);
-    val->value_text = strndup(buf, val->value_bytes);
+    val->value_bytes = snprintf(val->value_buf, sizeof(val->value_buf), "%" PRId64, v);
+    if (val->value_bytes < sizeof(val->value_buf)) {
+        val->value_text = val->value_buf;
+    } else {
+        val->value_text = malloc(val->value_bytes + 1);
+        sprintf(val->value_text, "%" PRId64, v);
+    }
     return val;
 }
 char cson_value_is_integer(cson_value const *v)
@@ -553,12 +563,16 @@ cson_value *cson_new_int(cson_int_t v)
 }
 cson_value *cson_value_new_double(cson_double_t v)
 {
-    char buf[1024];
     cson_value *val = calloc(1, sizeof(cson_value));
     val->sql_type = SQLITE_FLOAT;
     val->u.dbl = v;
-    val->value_bytes = snprintf(buf, sizeof(buf), "%.15g", v);
-    val->value_text = strndup(buf, val->value_bytes);
+    val->value_bytes = snprintf(val->value_buf, sizeof(val->value_buf), "%.15g", v);
+    if (val->value_bytes < sizeof(val->value_buf)) {
+        val->value_text = val->value_buf;
+    } else {
+        val->value_text = malloc(val->value_bytes + 1);
+        sprintf(val->value_text, "%.15g", v);
+    }
     return val;
 }
 char cson_value_is_double(cson_value const *v)
@@ -586,7 +600,9 @@ cson_value *cson_value_new_string(char const *str, unsigned int n)
 {
     cson_value *val = calloc(1, sizeof(cson_value));
     val->sql_type = SQLITE_TEXT;
-    val->value_text = strndup(str, n);
+    val->value_text = n < sizeof(val->value_buf) - 1
+                          ? strncpy0(val->value_buf, str, n)
+                          : strndup(str, n);
     val->value_bytes = n;
     return val;
 }
@@ -620,7 +636,7 @@ cson_value *cson_value_null(void)
 {
     cson_value *val = calloc(1, sizeof(cson_value));
     val->sql_type = SQLITE_NULL;
-    val->value_text = strdup("null");
+    val->value_text = strcpy(val->value_buf, "null");
     val->value_bytes = 4;
     return val;
 }
@@ -646,26 +662,36 @@ char cson_value_get_bool(cson_value const *val)
 }
 int cson_output_FILE(cson_value *val, FILE *dest)
 {
-    if (val->sub_type) {
-        cson__render(val);
+    if (val->sub_type && val->modified) {
+        cson__output(val);
+        fwrite(val->output.zBuf, val->output.nUsed, 1, dest);
+    } else {
+        fwrite(val->value_text, val->value_bytes, 1, dest);
     }
-    return fprintf(dest, "%s\n", val->value_text);
+    fputc('\n', dest);
+    return 0;
 }
 int cson_output_buffer(cson_value *val, cson_buffer *buf)
 {
-    if (val->sub_type) {
-        cson__render(val);
+    if (val->sub_type && val->modified) {
+        cson__output(val);
+        buf->mem = val->output.zBuf;
+        buf->used = val->output.nUsed;
+    } else {
+        buf->mem = val->value_text;
+        buf->used = val->value_bytes;
     }
-    buf->mem = val->value_text;
-    buf->used = val->value_bytes;
     return 0;
 }
 int cson_output(cson_value *val, cson_data_dest_f f, void *arg)
 {
+    int rc;
     if (val->sub_type) {
-        cson__render(val);
+        cson__output(val);
+        rc = f(arg, val->output.zBuf, val->output.nUsed);
+    } else {
+        rc = f(arg, val->value_text, val->value_bytes);
     }
-    int rc = f(arg, val->value_text, val->value_bytes);
     if (rc == 0) {
         rc = f(arg, "\n", 1);
     }
