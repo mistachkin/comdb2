@@ -422,8 +422,6 @@ int bdb_queuedb_add(bdb_state_type *bdb_state, tran_type *tran, const void *dta,
                 rc = -1;
                 goto done;
             }
-        } else if (bdb_state->persistent_seq) {
-            get_queue_sequence_tran(bdb_state->name, &prev_seq.seq, tran);
         } else if (usingDbpOne) {
             int rc2;
             assert(db == db2);
@@ -470,6 +468,8 @@ int bdb_queuedb_add(bdb_state_type *bdb_state, tran_type *tran, const void *dta,
                 rc = -1;
                 goto done;
             }
+        } else if (bdb_state->persistent_seq) {
+            get_queue_sequence_tran(bdb_state->name, &prev_seq.seq, tran);
         }
         qfnd_odh.seq = (prev_seq.seq + 1);
 

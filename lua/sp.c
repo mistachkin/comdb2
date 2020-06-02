@@ -2281,7 +2281,7 @@ retry:
                                             flags);
     }
     sp->initial = 0;
-    if ((sp->rc == SQLITE_SCHEMA) && (maxRetries != 0) &&
+    if ((sp->rc == SQLITE_PERM) && (maxRetries != 0) &&
             ((maxRetries == -1) || (nRetry++ < maxRetries))) {
         int sleepms = ATOMIC_LOAD32(gbl_lua_prepare_retry_sleep);
         if (sleepms >= 0) poll(NULL, 0, sleepms);
