@@ -904,7 +904,7 @@ int bdb_queue_consume_goose(bdb_state_type *bdb_state, tran_type *tran,
  * be set to point to memory that the caller must free.  The actual item data
  * will be at ((const char *)*fnd) + *fnddtaoff). */
 struct bdb_queue_found;
-int bdb_queue_get(bdb_state_type *bdb_state, int consumer,
+int bdb_queue_get(bdb_state_type *bdb_state, tran_type *tran, int consumer,
                   const struct bdb_queue_cursor *prevcursor,
                   struct bdb_queue_found **fnd, size_t *fnddtalen,
                   size_t *fnddtaoff, struct bdb_queue_cursor *fndcursor,
