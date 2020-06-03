@@ -316,9 +316,27 @@ int bdb_queuedb_best_pagesize(int avg_item_sz)
 int bdb_queuedb_add(bdb_state_type *bdb_state, tran_type *tran, const void *dta,
                     size_t dtalen, int *bdberr, unsigned long long *out_genid)
 {
+    struct bdb_queue_priv *qstate = (struct bdb_queue_priv *)bdb_state->qpriv;
+
+    /* TODO: rather than grabbing inline, minimize the time we hold this lock by
+     * deferring queue-writes until after everything else in toblock is done.
+     * Also force all transactions to acquire these locks in the same order so
+     * that we can avoid deadlocks from two transactions which have both made
+     * it to that point. */
+    int rc = bdb_lock_table_read(bdb_state, tran);
+    if (rc == DB_LOCK_DEADLOCK) {
+        *bdberr = BDBERR_DEADLOCK;
+        qstate->stats.n_add_deadlocks++;
+        return -1;
+    } else if (rc != 0) {
+        logmsg(LOGMSG_ERROR, "%s: queuedb %s error getting tablelock %d\n",
+               __func__, bdb_state->name, rc);
+        *bdberr = BDBERR_MISC;
+        return -1;
+    }
+
     struct queuedb_key k;
     unsigned long long genid;
-    int rc;
     uint8_t ver = 0;
     DBT dbt_key = {0}, dbt_data = {0};
     DBC *dbcp1 = NULL;
@@ -330,32 +348,12 @@ int bdb_queuedb_add(bdb_state_type *bdb_state, tran_type *tran, const void *dta,
     void *databuf = NULL;
     void *freeme1 = NULL;
     void *freeme2 = NULL;
-    struct bdb_queue_priv *qstate = bdb_state->qpriv;
 
     if (gbl_debug_queuedb)
         logmsg(LOGMSG_USER, ">>> bdb_queuedb_add %s\n", bdb_state->name);
 
-    qstate = (struct bdb_queue_priv *)bdb_state->qpriv;
     databuf = malloc(dtalen + sizeof(struct bdb_queue_found_seq));
 
-    /* TODO: rather than grabbing inline, minimize the time we hold this lock by
-     * deferring queue-writes until after everything else in toblock is done.
-     * Also force all transactions to acquire these locks in the same order so
-     * that we can avoid deadlocks from two transactions which have both made
-     * it to that point. */
-    rc = bdb_lock_table_read(bdb_state, tran);
-    if (rc == DB_LOCK_DEADLOCK) {
-        *bdberr = BDBERR_DEADLOCK;
-        qstate->stats.n_add_deadlocks++;
-        rc = -1;
-        goto done;
-    } else if (rc != 0) {
-        logmsg(LOGMSG_ERROR, "queuedb %s error getting tablelock %d\n",
-               bdb_state->name, rc);
-        *bdberr = BDBERR_MISC;
-        rc = -1;
-        goto done;
-    }
     int usingDbpOne = 0;
     DB *db1 = BDB_QUEUEDB_GET_DBP_ZERO(bdb_state);
     DB *db2 = BDB_QUEUEDB_GET_DBP_ONE(bdb_state);
@@ -612,6 +610,17 @@ int bdb_queuedb_stats(bdb_state_type *bdb_state,
                       bdb_queue_stats_callback_t callback, tran_type *tran,
                       void *userptr, int *bdberr)
 {
+    int rc = bdb_lock_table_read(bdb_state, tran);
+    if (rc == DB_LOCK_DEADLOCK) {
+        *bdberr = BDBERR_DEADLOCK;
+        return -1;
+    } else if (rc != 0) {
+        logmsg(LOGMSG_ERROR, "%s: queuedb %s error getting tablelock %d\n",
+               __func__, bdb_state->name, rc);
+        *bdberr = BDBERR_MISC;
+        return -1;
+    }
+
     DBT dbt_key = {0}, dbt_data = {0};
     DBC *dbcp1 = NULL;
     DBC *dbcp2 = NULL;
@@ -620,7 +629,7 @@ int bdb_queuedb_stats(bdb_state_type *bdb_state,
     unsigned int epoch = 0, first_seq = 0, last_seq = 0;
     struct bdb_queue_found_seq qfnd_odh;
     uint8_t *p_buf, *p_buf_end;
-    int rc, consumern = 0;
+    int consumern = 0;
 
     assert(bdb_state->ondisk_header);
     if (gbl_debug_queuedb)
@@ -757,6 +766,17 @@ int bdb_queuedb_walk(bdb_state_type *bdb_state, int flags, void *lastitem,
                      bdb_queue_walk_callback_t callback, tran_type *tran,
                      void *userptr, int *bdberr)
 {
+    int rc = bdb_lock_table_read(bdb_state, tran);
+    if (rc == DB_LOCK_DEADLOCK) {
+        *bdberr = BDBERR_DEADLOCK;
+        return -1;
+    } else if (rc != 0) {
+        logmsg(LOGMSG_ERROR, "%s: queuedb %s error getting tablelock %d\n",
+               __func__, bdb_state->name, rc);
+        *bdberr = BDBERR_MISC;
+        return -1;
+    }
+
     DB *dbs[2] = {
         BDB_QUEUEDB_GET_DBP_ZERO(bdb_state),
         BDB_QUEUEDB_GET_DBP_ONE(bdb_state)
@@ -764,7 +784,6 @@ int bdb_queuedb_walk(bdb_state_type *bdb_state, int flags, void *lastitem,
     DBT dbt_key = {0}, dbt_data = {0};
     DBC *dbcp = NULL;
     uint8_t ver = 0;
-    int rc;
 
     if (gbl_debug_queuedb)
         logmsg(LOGMSG_USER, ">>> bdb_queuedb_walk %s\n", bdb_state->name);
@@ -893,7 +912,8 @@ int bdb_queuedb_dump(bdb_state_type *bdb_state, FILE *out, int *bdberr)
     return 0;
 }
 
-static int bdb_queuedb_get_int(bdb_state_type *bdb_state, DB *db, int consumer,
+static int bdb_queuedb_get_int(bdb_state_type *bdb_state, tran_type *tran,
+                               DB *db, int consumer,
                                const struct bdb_queue_cursor *prevcursor,
                                struct bdb_queue_found **fnd, size_t *fnddtalen,
                                size_t *fnddtaoff,
@@ -927,7 +947,7 @@ static int bdb_queuedb_get_int(bdb_state_type *bdb_state, DB *db, int consumer,
 
     dbt_key.flags = dbt_data.flags = DB_DBT_REALLOC;
 
-    rc = db->cursor(db, NULL, &dbcp, 0);
+    rc = db->cursor(db, tran ? tran->tid : NULL, &dbcp, 0);
     if (rc) {
         *bdberr = BDBERR_MISC;
         goto done;
@@ -1138,20 +1158,30 @@ done:
     return rc;
 }
 
-int bdb_queuedb_get(bdb_state_type *bdb_state, int consumer,
+int bdb_queuedb_get(bdb_state_type *bdb_state, tran_type *tran, int consumer,
                     const struct bdb_queue_cursor *prevcursor,
                     struct bdb_queue_found **fnd, size_t *fnddtalen,
                     size_t *fnddtaoff, struct bdb_queue_cursor *fndcursor,
                     long long *seq, unsigned int *epoch, int *bdberr)
 {
-    int rc;
-    DB *db;
+    int rc = bdb_lock_table_read(bdb_state, tran);
+    if (rc == DB_LOCK_DEADLOCK) {
+        *bdberr = BDBERR_DEADLOCK;
+        struct bdb_queue_priv *qstate = bdb_state->qpriv;
+        qstate->stats.n_get_deadlocks++;
+        return -1;
+    } else if (rc != 0) {
+        logmsg(LOGMSG_ERROR, "%s: queuedb %s error getting tablelock %d\n",
+               __func__, bdb_state->name, rc);
+        *bdberr = BDBERR_MISC;
+        return -1;
+    }
 
-    db = BDB_QUEUEDB_GET_DBP_ZERO(bdb_state);
+    DB *db = BDB_QUEUEDB_GET_DBP_ZERO(bdb_state);
     assert(db != NULL);
     *bdberr = 0;
 
-    rc = bdb_queuedb_get_int(bdb_state, db, consumer, prevcursor,
+    rc = bdb_queuedb_get_int(bdb_state, tran, db, consumer, prevcursor,
                              fnd, fnddtalen, fnddtaoff, fndcursor,
                              seq, epoch, bdberr);
     if ((rc == -1) && (*bdberr == BDBERR_FETCH_DTA)) { /* EMPTY FILE #0? */
@@ -1160,7 +1190,7 @@ int bdb_queuedb_get(bdb_state_type *bdb_state, int consumer,
         if (db != NULL) {
             *bdberr = 0;
 
-            rc = bdb_queuedb_get_int(bdb_state, db, consumer, prevcursor,
+            rc = bdb_queuedb_get_int(bdb_state, tran, db, consumer, prevcursor,
                                      fnd, fnddtalen, fnddtaoff, fndcursor,
                                      seq, epoch, bdberr);
         }
@@ -1301,10 +1331,20 @@ int bdb_queuedb_consume(bdb_state_type *bdb_state, tran_type *tran,
                         int consumer, const struct bdb_queue_found *fnd,
                         int *bdberr)
 {
-    int rc;
-    DB *db;
+    int rc = bdb_lock_table_read(bdb_state, tran);
+    if (rc == DB_LOCK_DEADLOCK) {
+        *bdberr = BDBERR_DEADLOCK;
+        struct bdb_queue_priv *qstate = bdb_state->qpriv;
+        qstate->stats.n_consume_deadlocks++;
+        return -1;
+    } else if (rc != 0) {
+        logmsg(LOGMSG_ERROR, "%s: queuedb %s error getting tablelock %d\n",
+               __func__, bdb_state->name, rc);
+        *bdberr = BDBERR_MISC;
+        return -1;
+    }
 
-    db = BDB_QUEUEDB_GET_DBP_ZERO(bdb_state);
+    DB *db = BDB_QUEUEDB_GET_DBP_ZERO(bdb_state);
     assert(db != NULL);
     *bdberr = 0;
 

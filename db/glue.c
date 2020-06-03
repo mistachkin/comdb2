@@ -5288,10 +5288,17 @@ int dbq_get(struct ireq *iq, int consumer,
     if (!bdb_handle)
         return ERR_NO_AUXDB;
 
+    tran_type *tran = NULL;
+    rc = trans_start(iq, NULL, (void *)&tran);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s: trans_start rc %d\n", __func__, rc);
+        goto done;
+    }
+
 retry:
     iq->gluewhere = "bdb_queue_get";
-    rc = bdb_queue_get(bdb_handle, consumer, prevcursor, fnddta, fnddtalen,
-                       fnddtaoff, fndcursor, seq, epoch, &bdberr);
+    rc = bdb_queue_get(bdb_handle, tran, consumer, prevcursor, fnddta,
+                       fnddtalen, fnddtaoff, fndcursor, seq, epoch, &bdberr);
     iq->gluewhere = "bdb_queue_get done";
     if (rc != 0) {
         if (bdberr == BDBERR_DEADLOCK) {
@@ -5303,16 +5310,29 @@ retry:
             }
             logmsg(LOGMSG_ERROR, "*ERROR* bdb_queue_get too much contention %d count %d\n",
                    bdberr, retries);
-            return ERR_INTERNAL;
+            rc = ERR_INTERNAL;
+            goto done;
         } else if (bdberr == BDBERR_FETCH_DTA) {
-            return IX_NOTFND;
+            rc = IX_NOTFND;
+            goto done;
         }
 
         else if (bdberr == BDBERR_LOCK_DESIRED) {
-            return IX_NOTFND;
+            rc = IX_NOTFND;
+            goto done;
         }
 
-        return map_unhandled_bdb_rcode("bdb_queue_get", bdberr, 0);
+        rc = map_unhandled_bdb_rcode("bdb_queue_get", bdberr, 0);
+        goto done;
+    }
+done:
+    if (tran) {
+        rc = bdb_tran_abort(bdb_handle, tran, &bdberr);
+        if (rc) {
+            logmsg(LOGMSG_FATAL, "%s:%d failed to abort transaction\n",
+                   __FILE__, __LINE__);
+            exit(1);
+        }
     }
     return rc;
 }
