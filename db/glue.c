@@ -5327,10 +5327,9 @@ retry:
     }
 done:
     if (tran) {
-        rc = bdb_tran_abort(bdb_handle, tran, &bdberr);
-        if (rc) {
-            logmsg(LOGMSG_FATAL, "%s:%d failed to abort transaction\n",
-                   __FILE__, __LINE__);
+        if (bdb_tran_abort(bdb_handle, tran, &bdberr)) {
+            logmsg(LOGMSG_FATAL, "%s:%d failed to abort transaction: %d\n",
+                   __FILE__, __LINE__, bdberr);
             exit(1);
         }
     }
