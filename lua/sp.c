@@ -2287,6 +2287,7 @@ retry:
         if (sleepms >= 0) poll(NULL, 0, sleepms);
         goto retry;
     }
+    if (sp->rc == SQLITE_PERM) sp->rc = SQLITE_SCHEMA; /* R7 compat */
     if (sp->rc == 0) {
         *stmt = rec_ptr->stmt;
         rec_ptr->sql = sqlite3_sql(*stmt);

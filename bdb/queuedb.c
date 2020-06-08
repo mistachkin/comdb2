@@ -1203,7 +1203,7 @@ int bdb_queuedb_get(bdb_state_type *bdb_state, tran_type *tran, int consumer,
 static int bdb_queuedb_consume_int(bdb_state_type *bdb_state, DB *db,
                                    tran_type *tran, int consumer,
                                    const struct bdb_queue_found *fnd,
-                                   int *bdberr)
+                                   int put_seq, int *bdberr)
 {
     struct queuedb_key k = {
         .consumer = consumer,
@@ -1269,7 +1269,7 @@ static int bdb_queuedb_consume_int(bdb_state_type *bdb_state, DB *db,
         }
     }
 
-    if (bdb_state->persistent_seq) {
+    if (put_seq && bdb_state->persistent_seq) {
         DBT next_key = {0}, next_data = {0};
         next_key.flags = next_data.flags = DB_DBT_PARTIAL;
 
@@ -1311,7 +1311,7 @@ static int bdb_queuedb_consume_int(bdb_state_type *bdb_state, DB *db,
     bdb_state->qdb_cons++;
 
 done:
-    if (bdb_state->persistent_seq && val.data)
+    if (put_seq && bdb_state->persistent_seq && val.data)
         free(val.data);
     if (dbcp) {
         int crc;
@@ -1346,20 +1346,20 @@ int bdb_queuedb_consume(bdb_state_type *bdb_state, tran_type *tran,
         return -1;
     }
 
-    DB *db = BDB_QUEUEDB_GET_DBP_ZERO(bdb_state);
-    assert(db != NULL);
+    DB *db1 = BDB_QUEUEDB_GET_DBP_ZERO(bdb_state);
+    DB *db2 = BDB_QUEUEDB_GET_DBP_ONE(bdb_state);
+    int put_seq = (db2 != NULL) ? bdb_queuedb_is_db_empty(db2, tran) : 1;
+
     *bdberr = 0;
 
-    rc = bdb_queuedb_consume_int(bdb_state, db, tran, consumer,
-                                 fnd, bdberr);
+    rc = bdb_queuedb_consume_int(bdb_state, db1, tran, consumer,
+                                 fnd, put_seq, bdberr);
     if ((rc == -1) && (*bdberr == BDBERR_DELNOTFOUND)) { /* EMPTY FILE #0? */
-        db = BDB_QUEUEDB_GET_DBP_ONE(bdb_state);
-
-        if (db != NULL) {
+        if (db2 != NULL) {
             *bdberr = 0;
 
-            rc = bdb_queuedb_consume_int(bdb_state, db, tran, consumer,
-                                         fnd, bdberr);
+            rc = bdb_queuedb_consume_int(bdb_state, db2, tran, consumer,
+                                         fnd, put_seq, bdberr);
         }
     }
     return rc;
