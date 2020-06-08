@@ -1359,7 +1359,7 @@ int bdb_queuedb_consume(bdb_state_type *bdb_state, tran_type *tran,
             *bdberr = 0;
 
             rc = bdb_queuedb_consume_int(bdb_state, db2, tran, consumer,
-                                         fnd, put_seq, bdberr);
+                                         fnd, 1, bdberr);
         }
     }
     return rc;
