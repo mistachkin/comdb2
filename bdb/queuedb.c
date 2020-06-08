@@ -465,6 +465,8 @@ int bdb_queuedb_add(bdb_state_type *bdb_state, tran_type *tran, const void *dta,
                 *bdberr = BDBERR_MISC;
                 rc = -1;
                 goto done;
+            } else if (bdb_state->persistent_seq) {
+                get_queue_sequence_tran(bdb_state->name, &prev_seq.seq, tran);
             }
         } else if (bdb_state->persistent_seq) {
             get_queue_sequence_tran(bdb_state->name, &prev_seq.seq, tran);
