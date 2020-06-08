@@ -2244,7 +2244,7 @@ static void lua_end_step(struct sqlclntstate *clnt, SP sp,
     int64_t time = comdb2_time_epochms();
     Vdbe *pVdbe = (Vdbe*)pStmt;
 
-    if ((sp != NULL) && (pVdbe != NULL)) {
+    if ((sp != NULL) && (pVdbe != NULL) && (pVdbe->luaStartTime != 0)) {
         const char *zNormSql = sqlite3_normalized_sql(pStmt);
 
         if (zNormSql != NULL) {
@@ -2268,6 +2268,7 @@ static void lua_end_step(struct sqlclntstate *clnt, SP sp,
         }
 
         restore_thd_cost_and_reset(sp->thd, pVdbe);
+        pVdbe->luaStartTime = 0;
     }
 }
 
