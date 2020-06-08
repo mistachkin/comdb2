@@ -845,6 +845,8 @@ int get_dbtable_idx_by_name(const char *tablename)
 
 dbtable *get_dbtable_by_name(const char *p_name)
 {
+    assert_lock_schema_lk();
+
     dbtable *p_db = NULL;
 
     Pthread_rwlock_rdlock(&thedb_lock);
@@ -886,6 +888,7 @@ dbtable *get_dbtable_by_name_locked(tran_type *tran, const char *p_name)
 
 dbtable *getqueuebyname(const char *name)
 {
+    assert_lock_schema_lk();
     return hash_find_readonly(thedb->qdb_hash, &name);
 }
 
