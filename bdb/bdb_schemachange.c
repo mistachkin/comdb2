@@ -115,7 +115,7 @@ int32_t bdb_get_dbopen_gen(void)
 int bdb_bump_dbopen_gen(const char *type, const char *message,
                         const char *funcName, const char *fileName, int lineNo)
 {
-    int rc = ATOMIC_ADD32(gbl_dbopen_gen, 1);
+    int rc = ATOMIC_ADD32(dbopen_gen, 1);
     if (message == NULL) message = "<null>";
     logmsg(LOGMSG_WARN,
            "DBOPEN_GEN is now %d (for type %s via %s, %s, line #%d): %s\n",
