@@ -387,7 +387,7 @@ int timepart_add_view(void *tran, timepart_views_t *views,
 
        NOTE:
        As it is now, changing partitions doesn't update any global counters:
-          - gbl_dbopen_gen
+          - bdb_bump_dbopen_gen()
           - gbl_analyze_gen
           - gbl_views_gen (at least this one should get updated)
 

@@ -710,20 +710,13 @@ static int comdb2_authorizer_for_sqlite(
   int denyCreateTrigger = (pAuthState->flags & PREPARE_DENY_CREATE_TRIGGER);
   int denyPragma = (pAuthState->flags & PREPARE_DENY_PRAGMA);
   int denyDdl = (pAuthState->flags & PREPARE_DENY_DDL);
+  int allowTempDDL = (pAuthState->flags & PREPARE_ALLOW_TEMP_DDL);
   switch (code) {
     case SQLITE_CREATE_INDEX:
     case SQLITE_CREATE_TABLE:
-    case SQLITE_CREATE_TEMP_INDEX:
-    case SQLITE_CREATE_TEMP_TABLE:
-    case SQLITE_CREATE_TEMP_TRIGGER:
-    case SQLITE_CREATE_TEMP_VIEW:
     case SQLITE_CREATE_VIEW:
     case SQLITE_DROP_INDEX:
     case SQLITE_DROP_TABLE:
-    case SQLITE_DROP_TEMP_INDEX:
-    case SQLITE_DROP_TEMP_TABLE:
-    case SQLITE_DROP_TEMP_TRIGGER:
-    case SQLITE_DROP_TEMP_VIEW:
     case SQLITE_DROP_TRIGGER:
     case SQLITE_DROP_VIEW:
     case SQLITE_ALTER_TABLE:
@@ -770,6 +763,16 @@ static int comdb2_authorizer_for_sqlite(
       } else {
         return SQLITE_OK;
       }
+    case SQLITE_CREATE_TEMP_INDEX:
+    case SQLITE_CREATE_TEMP_TABLE:
+    case SQLITE_CREATE_TEMP_TRIGGER:
+    case SQLITE_CREATE_TEMP_VIEW:
+    case SQLITE_DROP_TEMP_INDEX:
+    case SQLITE_DROP_TEMP_TABLE:
+    case SQLITE_DROP_TEMP_TRIGGER:
+    case SQLITE_DROP_TEMP_VIEW:
+      pAuthState->numDdls++;
+      return allowTempDDL ? SQLITE_OK : SQLITE_DENY;
     default:
       return SQLITE_OK;
   }
@@ -2815,18 +2818,24 @@ void delete_prepared_stmts(struct sqlthdstate *thd)
 }
 
 // Call with schema_lk held and no_transaction == 1
-static int check_thd_gen(struct sqlthdstate *thd, struct sqlclntstate *clnt)
+static int check_thd_gen(struct sqlthdstate *thd, struct sqlclntstate *clnt, int flags)
 {
+    int allow_temp = flags & PREPARE_ALLOW_TEMP_DDL;
+    int recreate = flags & PREPARE_RECREATE;
+    if (!recreate && allow_temp) {
+        /* Never stale to operate on sqlite_temp_master */
+        return SQLITE_OK;
+    }
     /* cache analyze gen first because gbl_analyze_gen is NOT protected by
      * schema_lk */
     int cached_analyze_gen = gbl_analyze_gen;
     if (gbl_fdb_track)
         logmsg(LOGMSG_USER,
                "XXX: thd dbopen=%d vs %d thd analyze %d vs %d views %d vs %d\n",
-               thd->dbopen_gen, ATOMIC_LOAD32(gbl_dbopen_gen), thd->analyze_gen,
+               thd->dbopen_gen, bdb_get_dbopen_gen(), thd->analyze_gen,
                cached_analyze_gen, thd->views_gen, gbl_views_gen);
 
-    if (thd->dbopen_gen != ATOMIC_LOAD32(gbl_dbopen_gen)) {
+    if (thd->dbopen_gen != bdb_get_dbopen_gen()) {
         return SQLITE_SCHEMA;
     }
     if (thd->analyze_gen != cached_analyze_gen) {
@@ -3296,10 +3305,10 @@ static int handle_bad_transaction_mode(struct sqlthdstate *thd,
 
 static int prepare_engine(struct sqlthdstate *, struct sqlclntstate *, int);
 int sqlengine_prepare_engine(struct sqlthdstate *thd,
-                             struct sqlclntstate *clnt, int recreate)
+                             struct sqlclntstate *clnt, int flags)
 {
     clnt->no_transaction = 1;
-    int rc = prepare_engine(thd, clnt, recreate);
+    int rc = prepare_engine(thd, clnt, flags);
     clnt->no_transaction = 0;
     return rc;
 }
@@ -3395,9 +3404,8 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
                                  int flags)
 {
     bool normalize_sql_done = false;
-    int recreate = (flags & PREPARE_RECREATE);
     int prepareOnly = (flags & PREPARE_ONLY);
-    int rc = sqlengine_prepare_engine(thd, clnt, recreate);
+    int rc = sqlengine_prepare_engine(thd, clnt, flags);
     if (thd->sqldb == NULL) {
         return handle_bad_engine(clnt);
     } else if (rc) {
@@ -3567,6 +3575,14 @@ int get_prepared_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
             skip = 0;
     }
     return rc;
+}
+
+/* Only customer is creating and dropping temp-tables from stored procedures */
+int get_prepared_stmt_no_lock(struct sqlthdstate *thd,
+                               struct sqlclntstate *clnt, struct sql_state *rec,
+                               struct errstat *err, int flags)
+{
+    return get_prepared_stmt_int(thd, clnt, rec, err, flags);
 }
 
 /*
@@ -3754,7 +3770,7 @@ static void handle_expert_query(struct sqlthdstate *thd,
 
     *outrc = 0;
     rdlock_schema_lk();
-    rc = sqlengine_prepare_engine(thd, clnt, 1);
+    rc = sqlengine_prepare_engine(thd, clnt, PREPARE_RECREATE);
     unlock_schema_lk();
     if (thd->sqldb == NULL) {
         *outrc = handle_bad_engine(clnt);
@@ -3831,7 +3847,7 @@ static int handle_non_sqlite_requests(struct sqlthdstate *thd,
         return 1;
     } else if (clnt->is_explain) { // only via newsql--cdb2api
         rdlock_schema_lk();
-        rc = sqlengine_prepare_engine(thd, clnt, 1);
+        rc = sqlengine_prepare_engine(thd, clnt, PREPARE_RECREATE);
         unlock_schema_lk();
         if (thd->sqldb == NULL) {
             *outrc = handle_bad_engine(clnt);
@@ -4598,8 +4614,10 @@ static int execute_sql_query(struct sqlthdstate *thd, struct sqlclntstate *clnt)
 
 // call with schema_lk held + no_transaction
 static int prepare_engine(struct sqlthdstate *thd, struct sqlclntstate *clnt,
-                          int recreate)
+                          int flags)
 {
+    int recreate = flags & PREPARE_RECREATE;
+
     struct errstat xerr;
     int rc = 0;
     int got_views_lock = 0;
@@ -4614,7 +4632,7 @@ static int prepare_engine(struct sqlthdstate *thd, struct sqlclntstate *clnt,
     }
 
 check_version:
-    if (thd->sqldb && (rc = check_thd_gen(thd, clnt)) != SQLITE_OK) {
+    if (thd->sqldb && (rc = check_thd_gen(thd, clnt, flags)) != SQLITE_OK) {
         if (rc != SQLITE_SCHEMA_REMOTE) {
             if (!recreate) {
                 goto done;
@@ -4674,7 +4692,7 @@ check_version:
                 /* there is no really way forward, grab core */
                 abort();
             }
-            thd->dbopen_gen = ATOMIC_LOAD32(gbl_dbopen_gen);
+            thd->dbopen_gen = bdb_get_dbopen_gen();
         }
 
         get_copy_rootpages_nolock(thd->sqlthd);
@@ -4754,9 +4772,11 @@ static void sqlengine_work_lua_thread(void *thddata, void *work)
 
     clnt->osql.timings.query_dispatched = osql_log_time();
     clnt->deque_timeus = comdb2_time_epochus();
+    clnt->thd = thd;
+    sql_update_usertran_state(clnt);
 
     rdlock_schema_lk();
-    rc = sqlengine_prepare_engine(thd, clnt, 1);
+    rc = sqlengine_prepare_engine(thd, clnt, PREPARE_RECREATE);
     unlock_schema_lk();
 
     if (thd->sqldb == NULL || rc) {

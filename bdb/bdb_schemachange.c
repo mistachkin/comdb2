@@ -105,6 +105,13 @@ const char *bdb_get_scdone_str(scdone_t type)
     return buf;
 }
 
+static int32_t dbopen_gen = 0;
+
+int32_t bdb_get_dbopen_gen(void)
+{
+    return ATOMIC_LOAD32(dbopen_gen);
+}
+
 int bdb_bump_dbopen_gen(const char *type, const char *message,
                         const char *funcName, const char *fileName, int lineNo)
 {
