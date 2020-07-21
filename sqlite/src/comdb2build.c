@@ -5591,9 +5591,7 @@ void comdb2CreateForeignKey(
             if (idx_part->name == 0)
                 goto oom;
 
-            if (pFromCol->a[i].sortFlags & KEYINFO_ORDER_DESC) {
-                idx_part->flags |= INDEX_ORDER_DESC;
-            }
+            assert((pFromCol->a[i].sortFlags & KEYINFO_ORDER_DESC)==0);
 
             /* There's no comdb2_column for foreign columns. */
             // idx_part->column = 0;
@@ -5615,13 +5613,7 @@ void comdb2CreateForeignKey(
         if (idx_part->name == 0)
             goto oom;
 
-<<<<<<< HEAD
-        if (pToCol->a[i].sortFlags & KEYINFO_ORDER_DESC) {
-            idx_part->flags |= INDEX_ORDER_DESC;
-        }
-=======
-        assert(pToCol->a[i].sortOrder == SQLITE_SO_ASC);
->>>>>>> 8db992502de493566a6d483461c2cf7e962a3655
+        assert((pToCol->a[i].sortFlags & KEYINFO_ORDER_DESC)==0);
         // idx_part->column = 0;
 
         listc_abl(&constraint->parent_idx_col_list, idx_part);
