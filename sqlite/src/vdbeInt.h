@@ -577,6 +577,8 @@ struct Vdbe {
   int *updCols;           /* list of columns modified in this update */
   Table **tbls;           /* list of tables to be open. */ 
   u16 numTables;
+  u16 numVTableLocks;
+  char **vTableLocks;
   char tzname[TZNAME_MAX];/* timezone info for datetime support */
   int dtprec;             /* datetime precision - make it u32 to silence compiler */
   struct timespec tspec;  /* time of prepare, used for stable now() */
@@ -585,6 +587,8 @@ struct Vdbe {
   i64 luaStartTime;       /* start time for Lua running a query */
   i64 luaRows;            /* number of rows processed by Lua */
   double luaSavedCost;    /* saved cost for this Lua thread */
+  char **oldColNames;     /* Column names returned by old-sqlite version */
+  int oldColCount;        /* Column count (refer: sqlitex)*/
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 };
 

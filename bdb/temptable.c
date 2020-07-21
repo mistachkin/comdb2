@@ -46,6 +46,7 @@
  * but in case of B-Tree new data is allocated. So far haven't seen any
  * problems. */
 
+#include <schema_lk.h>
 #include "locks.h"
 #include "locks_wrap.h"
 #include "bdb_int.h"
@@ -480,6 +481,8 @@ static void bdb_temp_table_reset(struct temp_table *tbl)
     tbl->num_mem_entries = 0;
 }
 
+static int bdb_temp_table_reset_cursor(bdb_state_type *bdb_state, struct temp_cursor *cur, int *bdberr);
+
 static int bdb_temp_table_init_temp_db(bdb_state_type *bdb_state,
                                        struct temp_table *tbl, int *bdberr)
 {
@@ -487,6 +490,18 @@ static int bdb_temp_table_init_temp_db(bdb_state_type *bdb_state,
     int rc;
 
     if (tbl->tmpdb) {
+        /* Close all cursors that this table has open. */
+        struct temp_cursor *cur;
+        LISTC_FOR_EACH(&tbl->cursors, cur, lnk)
+        {
+            /* Do not destory the temp cursor. Only reset it. The cursor may still
+               be referenced by others (e.g., SQLite's BtCursor). */
+            if ((rc = bdb_temp_table_reset_cursor(bdb_state, cur, bdberr)) != 0) {
+                logmsg(LOGMSG_ERROR, "%s: bdb_temp_table_reset_cursor(%p, %p) rc %d\n", __func__, tbl, cur, rc);
+                return rc;
+            }
+        }
+
         rc = tbl->tmpdb->close(tbl->tmpdb, 0);
         if (rc) {
             *bdberr = rc;
@@ -495,10 +510,6 @@ static int bdb_temp_table_init_temp_db(bdb_state_type *bdb_state,
             tbl->tmpdb = NULL;
             goto done;
         }
-
-        // set to NULL all cursors that this table has open
-        struct temp_cursor *cur;
-        LISTC_FOR_EACH(&tbl->cursors, cur, lnk) { cur->cur = NULL; }
     }
 
     rc = db_create(&db, tbl->dbenv_temp, 0);
@@ -559,7 +570,7 @@ static int bdb_temp_table_env_close(bdb_state_type *bdb_state,
     return 0;
 }
 
-pthread_key_t current_sql_query_key;
+extern pthread_key_t current_sql_query_key;
 int gbl_debug_temptables = 0;
 
 static struct temp_table *bdb_temp_table_create_main(bdb_state_type *bdb_state,
@@ -688,7 +699,15 @@ int bdb_temp_table_notify_pool_wrapper(void **tblp, void *bdb_state_arg)
     if (rc1 == TMPTBL_PRIORITY) { /* Are we going to end up waiting? */
         return OP_FORCE_NOW; /* No, we are forcing object creation. */
     } else {
-        int rc2 = recover_deadlock_simple(bdb_state);
+        int rc2;
+
+        /* This is in the middle of prepare.  We can't call recover deadlock,
+         * as releasing and re-acquiring the bdblock while holding the schema
+         * lock violates lock order.  We also can't prevent upgrades. */
+        if (have_schema_lock()) {
+            return OP_FAIL_NOW;
+        }
+        rc2 = recover_deadlock_simple(bdb_state);
         if (rc2 != 0) {
             logmsg(LOGMSG_WARN, "%s: recover_deadlock rc=%d\n", __func__, rc2);
         }
@@ -907,7 +926,7 @@ int bdb_temp_table_update(bdb_state_type *bdb_state, struct temp_cursor *cur,
     arr_elem_t *elem;
     uint8_t *keycopy, *dtacopy;
 
-    if (cur->tbl->temp_table_type != TEMP_TABLE_TYPE_BTREE ||
+    if (cur->tbl->temp_table_type != TEMP_TABLE_TYPE_BTREE &&
         cur->tbl->temp_table_type != TEMP_TABLE_TYPE_ARRAY) {
         logmsg(LOGMSG_ERROR, "bdb_temp_table_update operation "
                              "only supported for btree or array.\n");
@@ -2105,15 +2124,14 @@ static int key_memcmp(void *_, int key1len, const void *key1, int key2len,
     return rc;
 }
 
-int bdb_temp_table_close_cursor(bdb_state_type *bdb_state,
-                                struct temp_cursor *cur, int *bdberr)
+static int bdb_temp_table_reset_cursor(bdb_state_type *bdb_state, struct temp_cursor *cur, int *bdberr)
 {
     int rc = 0;
     struct temp_table *tbl;
     tbl = cur->tbl;
 
-    if (cur->tbl->temp_table_type == TEMP_TABLE_TYPE_BTREE ||
-        cur->tbl->temp_table_type == TEMP_TABLE_TYPE_ARRAY) {
+    if (tbl->temp_table_type == TEMP_TABLE_TYPE_BTREE ||
+        tbl->temp_table_type == TEMP_TABLE_TYPE_ARRAY) {
         if (cur->key) {
             free(cur->key);
             cur->key = NULL;
@@ -2133,16 +2151,21 @@ int bdb_temp_table_close_cursor(bdb_state_type *bdb_state,
             }
             cur->cur = NULL;
         }
-
-        /* Note: we can't do this until the cursor is closed.
-           Closing a cursor may invoke a search if we deleted items through that
-           cursor.  The search (custom search routine)
-           will need access to thread-specific data. */
-        /*Pthread_setspecific(cur->tbl->curkey, NULL);*/
     }
 
+    return rc;
+}
+
+/* The function closes the underlying berkdb cursor, removes the temp cursor from the temp table and frees it. */
+int bdb_temp_table_close_cursor(bdb_state_type *bdb_state, struct temp_cursor *cur, int *bdberr)
+{
+    int rc;
+    struct temp_table *tbl = cur->tbl;
+
     listc_rfl(&tbl->cursors, cur);
+    rc = bdb_temp_table_reset_cursor(bdb_state, cur, bdberr);
     free(cur);
+
     return rc;
 }
 

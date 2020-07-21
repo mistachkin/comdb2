@@ -656,6 +656,8 @@ static const char *help_text[] = {
     "       rollat N         - roll when log file size larger than N bytes",
     "       every N          - log only every Nth event, 0 logs all",
     "       verbose on/off   - turn on/off verbose mode",
+    "       dir <dir>        - set custom directory for event log files\n",
+    "       file <file>      - set log file to custom location\n",
     "       flush            - flush log file to disk",
     "reql [rulename] ...     - add/modify rules.  The default rule is '0'.",
     "                          Valid rule names begin with a digit or '.'.",
@@ -2038,8 +2040,8 @@ void reqlog_end_request(struct reqlogger *logger, int rc, const char *callfunc,
                                "LONG REQUEST %d MS logged in %s [%s time %d]\n",
                                U2M(logger->durationus),
                                long_request_out->filename, sqlinfo,
-                               U2M(logger->iq->sorese->endus -
-                                   logger->iq->sorese->startus));
+                               U2M(logger->iq->sorese->sess_endus -
+                                   logger->iq->sorese->sess_startus));
                     } else {
                         logmsg(LOGMSG_USER,
                                "%d LONG REQUESTS %d MS - %d MS logged "
@@ -2647,12 +2649,15 @@ struct summary_nodestats *get_nodestats_summary(unsigned *nodes_cnt,
 
             case BLOCK2_RECOM:
                 summaries[ii].recom += n;
+                break;
 
             case BLOCK2_SNAPISOL:
                 summaries[ii].snapisol += n;
+                break;
 
             case BLOCK2_SERIAL:
                 summaries[ii].serial += n;
+                break;
             }
         }
         ii++;
