@@ -291,7 +291,7 @@ columnname(A) ::= nm(A) typetoken(Y). {sqlite3AddColumn(pParse,&A,&Y);}
   EACH END EXCLUSIVE EXPLAIN FAIL FOR
   IGNORE IMMEDIATE INITIALLY INSTEAD LIKE_KW MATCH NO PLAN
   QUERY KEY OF OFFSET PRAGMA RAISE RECURSIVE RELEASE REPLACE RESTRICT ROW ROWS
-  ROLLBACK SAVEPOINT SEQUENCE TEMP TRIGGER VACUUM VIEW VIRTUAL WITH WITHOUT
+  ROLLBACK SAVEPOINT TEMP TRIGGER VACUUM VIEW VIRTUAL WITH WITHOUT
   NULLS FIRST LAST
 %ifdef SQLITE_OMIT_COMPOUND_SELECT
   EXCEPT INTERSECT UNION
@@ -324,7 +324,7 @@ columnname(A) ::= nm(A) typetoken(Y). {sqlite3AddColumn(pParse,&A,&Y);}
   ODH OFF OP OPTION OPTIONS
   PAGEORDER PASSWORD PAUSE PERIOD PENDING PROCEDURE PUT
   REBUILD READ READONLY REC RESERVED RESUME RETENTION REVOKE RLE ROWLOCKS
-  SCALAR SCHEMACHANGE SKIPSCAN START SUMMARIZE
+  SCALAR SCHEMACHANGE SEQUENCE SKIPSCAN START SUMMARIZE
   THREADS THRESHOLD TIME TRUNCATE TUNABLE TYPE
   VERSION WRITE DDL USERSCHEMA ZLIB
 %endif SQLITE_BUILDING_FOR_COMDB2
@@ -1116,7 +1116,6 @@ cmd ::= with UPDATE xfullname(X) indexed_opt(I) SET setlist(Y)
 %ifdef SQLITE_BUILDING_FOR_COMDB2
   sqlite3Update(pParse,X,Y,W,0,O,L,0);
 %endif SQLITE_BUILDING_FOR_COMDB2
-
 }
 %endif
 %ifndef SQLITE_ENABLE_UPDATE_DELETE_LIMIT
@@ -1135,7 +1134,6 @@ cmd ::= with UPDATE xfullname(X) indexed_opt(I) SET setlist(Y)
 %ifdef SQLITE_BUILDING_FOR_COMDB2
   sqlite3Update(pParse,X,Y,W,0,0,0,0);
 %endif SQLITE_BUILDING_FOR_COMDB2
-
 }
 %endif
 
@@ -1221,6 +1219,7 @@ idlist(A) ::= nm(Y).
       p->op = (u8)op;
       p->affExpr = 0;
       p->flags = EP_Leaf;
+      ExprClearVVAProperties(p);
       p->iAgg = -1;
       p->pLeft = p->pRight = 0;
       p->x.pList = 0;
@@ -1469,10 +1468,11 @@ expr(A) ::= expr(A) between_op(N) expr(X) AND expr(Y). [BETWEEN] {
       */
       sqlite3ExprUnmapAndDelete(pParse, A);
       A = sqlite3Expr(pParse->db, TK_INTEGER, N ? "1" : "0");
-    }else if( 0 && Y->nExpr==1 && sqlite3ExprIsConstant(Y->a[0].pExpr) ){
+    }else if( Y->nExpr==1 && sqlite3ExprIsConstant(Y->a[0].pExpr) ){
       Expr *pRHS = Y->a[0].pExpr;
       Y->a[0].pExpr = 0;
       sqlite3ExprListDelete(pParse->db, Y);
+      pRHS = sqlite3PExpr(pParse, TK_UPLUS, pRHS, 0);
       A = sqlite3PExpr(pParse, TK_EQ, A, pRHS);
       if( N ) A = sqlite3PExpr(pParse, TK_NOT, A, 0);
     }else{

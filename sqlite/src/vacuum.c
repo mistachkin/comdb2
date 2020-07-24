@@ -233,7 +233,7 @@ SQLITE_NOINLINE int sqlite3RunVacuum(
     }
     db->mDbFlags |= DBFLAG_VacuumInto;
   }
-  nRes = sqlite3BtreeGetOptimalReserve(pMain);
+  nRes = sqlite3BtreeGetRequestedReserve(pMain);
 
   sqlite3BtreeSetCacheSize(pTemp, db->aDb[iDb].pSchema->cache_size);
   sqlite3BtreeSetSpillSize(pTemp, sqlite3BtreeSetSpillSize(pMain,0));
@@ -304,7 +304,7 @@ SQLITE_NOINLINE int sqlite3RunVacuum(
   /* Copy the triggers, views, and virtual tables from the main database
   ** over to the temporary database.  None of these objects has any
   ** associated storage, so all we have to do is copy their entries
-  ** from the SQLITE_MASTER table.
+  ** from the schema table.
   */
   rc = execSqlF(db, pzErrMsg,
       "INSERT INTO vacuum_db.sqlite_master"
@@ -377,7 +377,7 @@ end_of_vacuum:
   db->nChange = saved_nChange;
   db->nTotalChange = saved_nTotalChange;
   db->mTrace = saved_mTrace;
-  sqlite3BtreeSetPageSize(pMain, -1, -1, 1);
+  sqlite3BtreeSetPageSize(pMain, -1, 0, 1);
 
   /* Currently there is an SQL level transaction open on the vacuum
   ** database. No locks are held on any other files (since the main file

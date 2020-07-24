@@ -107,7 +107,7 @@ int sqlite3InitCallback(void *pInit, int argc, char **argv, char **NotUsed){
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   UNUSED_PARAMETER2(NotUsed, argc);
   assert( sqlite3_mutex_held(db->mutex) );
-  DbClearProperty(db, iDb, DB_Empty);
+  db->mDbFlags |= DBFLAG_EncodingFixed;
   pData->nInitRow++;
   if( db->mallocFailed ){
     corruptSchema(pData, argv[1], 0);
@@ -212,6 +212,7 @@ int sqlite3InitOne(sqlite3 *db, int iDb, char **pzErrMsg, u32 mFlags){
   InitData initData;
   const char *zMasterName;
   int openedTransaction = 0;
+  int mask = ((db->mDbFlags & DBFLAG_EncodingFixed) | ~DBFLAG_EncodingFixed);
 
   assert( (db->mDbFlags & DBFLAG_SchemaKnownOk)==0 );
   assert( iDb>=0 && iDb<db->nDb );
@@ -266,6 +267,7 @@ int sqlite3InitOne(sqlite3 *db, int iDb, char **pzErrMsg, u32 mFlags){
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   sqlite3InitCallback(&initData, 5, (char **)azArg, 0);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+  db->mDbFlags &= mask;
   if( initData.rc ){
     rc = initData.rc;
     goto error_out;
@@ -338,31 +340,25 @@ int sqlite3InitOne(sqlite3 *db, int iDb, char **pzErrMsg, u32 mFlags){
   ** as sqlite3.enc.
   */
   if( meta[BTREE_TEXT_ENCODING-1] ){  /* text encoding */
-    if( iDb==0 ){
-#ifndef SQLITE_OMIT_UTF16
+    if( iDb==0 && (db->mDbFlags & DBFLAG_EncodingFixed)==0 ){
       u8 encoding;
+#ifndef SQLITE_OMIT_UTF16
       /* If opening the main database, set ENC(db). */
       encoding = (u8)meta[BTREE_TEXT_ENCODING-1] & 3;
       if( encoding==0 ) encoding = SQLITE_UTF8;
-      ENC(db) = encoding;
 #else
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-      SCHEMA_ENC(db) = SQLITE_UTF8;
-#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-      ENC(db) = SQLITE_UTF8;
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+      encoding = SQLITE_UTF8;
 #endif
+      sqlite3SetTextEncoding(db, encoding);
     }else{
       /* If opening an attached database, the encoding much match ENC(db) */
-      if( meta[BTREE_TEXT_ENCODING-1]!=ENC(db) ){
+      if( (meta[BTREE_TEXT_ENCODING-1] & 3)!=ENC(db) ){
         sqlite3SetString(pzErrMsg, db, "attached databases must use the same"
             " text encoding as main database");
         rc = SQLITE_ERROR;
         goto initone_error_out;
       }
     }
-  }else{
-    DbSetProperty(db, iDb, DB_Empty);
   }
   pDb->pSchema->enc = ENC(db);
 
@@ -488,8 +484,7 @@ int sqlite3InitTable(sqlite3 *db, char **pzErrMsg, const char *zName){
 ** error occurs, write an error message into *pzErrMsg.
 **
 ** After a database is initialized, the DB_SchemaLoaded bit is set
-** bit is set in the flags field of the Db structure. If the database
-** file was of zero-length, then the DB_Empty flag is also set.
+** bit is set in the flags field of the Db structure. 
 */
 int sqlite3Init(sqlite3 *db, char **pzErrMsg){
   int i, rc;
@@ -675,17 +670,18 @@ static void schemaIsValid(Parse *pParse){
 ** attached database is returned.
 */
 int sqlite3SchemaToIndex(sqlite3 *db, Schema *pSchema){
-  int i = -1000000;
+  int i = -32768;
 
-  /* If pSchema is NULL, then return -1000000. This happens when code in 
+  /* If pSchema is NULL, then return -32768. This happens when code in 
   ** expr.c is trying to resolve a reference to a transient table (i.e. one
   ** created by a sub-select). In this case the return value of this 
   ** function should never be used.
   **
-  ** We return -1000000 instead of the more usual -1 simply because using
-  ** -1000000 as the incorrect index into db->aDb[] is much 
+  ** We return -32768 instead of the more usual -1 simply because using
+  ** -32768 as the incorrect index into db->aDb[] is much 
   ** more likely to cause a segfault than -1 (of course there are assert()
-  ** statements too, but it never hurts to play the odds).
+  ** statements too, but it never hurts to play the odds) and
+  ** -32768 will still fit into a 16-bit signed integer.
   */
   assert( sqlite3_mutex_held(db->mutex) );
   if( pSchema ){
@@ -698,6 +694,15 @@ int sqlite3SchemaToIndex(sqlite3 *db, Schema *pSchema){
     assert( i>=0 && i<db->nDb );
   }
   return i;
+}
+
+/*
+** Deallocate a single AggInfo object
+*/
+static void agginfoFree(sqlite3 *db, AggInfo *p){
+  sqlite3DbFree(db, p->aCol);
+  sqlite3DbFree(db, p->aFunc);
+  sqlite3DbFree(db, p);
 }
 
 /*
@@ -717,6 +722,12 @@ void sqlite3ParserReset(Parse *pParse){
     pParse->azSrcListOnly = 0;
   }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+  AggInfo *pThis = pParse->pAggList;
+  while( pThis ){
+    AggInfo *pNext = pThis->pNext;
+    agginfoFree(db, pThis);
+    pThis = pNext;
+  }
   sqlite3DbFree(db, pParse->aLabel);
   sqlite3ExprListDelete(db, pParse->pConstExpr);
   if( db ){

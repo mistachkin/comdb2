@@ -1164,14 +1164,19 @@ int idxFindIndexes(
       /* int iNotUsed = sqlite3_column_int(pExplain, 2); */
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
       const char *zDetail = (const char*)sqlite3_column_text(pExplain, 3);
-      int nDetail = STRLEN(zDetail);
+      int nDetail;
       int i;
+
+      if( !zDetail ) continue;
+      nDetail = STRLEN(zDetail);
 
       for(i=0; i<nDetail; i++){
         const char *zIdx = 0;
-        if( memcmp(&zDetail[i], " USING INDEX ", 13)==0 ){
+        if( i+13<nDetail && memcmp(&zDetail[i], " USING INDEX ", 13)==0 ){
           zIdx = &zDetail[i+13];
-        }else if( memcmp(&zDetail[i], " USING COVERING INDEX ", 22)==0 ){
+        }else if( i+22<nDetail 
+            && memcmp(&zDetail[i], " USING COVERING INDEX ", 22)==0 
+        ){
           zIdx = &zDetail[i+22];
         }
         if( zIdx ){
@@ -2046,4 +2051,4 @@ void sqlite3_expert_destroy(sqlite3expert *p){
   }
 }
 
-#endif /* ifndef SQLITE_OMIT_VIRTUAL_TABLE */
+#endif /* ifndef SQLITE_OMIT_VIRTUALTABLE */

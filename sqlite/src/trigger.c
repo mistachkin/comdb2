@@ -128,7 +128,7 @@ void sqlite3BeginTrigger(
   **                                                 ^^^^^^^^
   **
   ** To maintain backwards compatibility, ignore the database
-  ** name on pTableName if we are reparsing out of SQLITE_MASTER.
+  ** name on pTableName if we are reparsing out of the schema table
   */
   if( db->init.busy && iDb!=1 ){
     sqlite3DbFree(db, pTableName->a[0].zDatabase);
@@ -335,12 +335,13 @@ void sqlite3FinishTrigger(
     z = sqlite3DbStrNDup(db, (char*)pAll->z, pAll->n);
     testcase( z==0 );
     sqlite3NestedParse(pParse,
+       "INSERT INTO %Q." DFLT_SCHEMA_TABLE
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-       "INSERT INTO %Q.%s VALUES('trigger',%Q,%Q,0,'CREATE TRIGGER %q', NULL)",
+       " VALUES('trigger',%Q,%Q,0,'CREATE TRIGGER %q', NULL)",
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-       "INSERT INTO %Q.%s VALUES('trigger',%Q,%Q,0,'CREATE TRIGGER %q')",
+       " VALUES('trigger',%Q,%Q,0,'CREATE TRIGGER %q')",
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-       db->aDb[iDb].zDbSName, MASTER_NAME, zName,
+       db->aDb[iDb].zDbSName, zName,
        pTrig->table, z);
     sqlite3DbFree(db, z);
     sqlite3ChangeCookie(pParse, iDb);
@@ -590,7 +591,7 @@ void sqlite3DropTrigger(Parse *pParse, SrcList *pName, int noErr){
   assert( zDb!=0 || sqlite3BtreeHoldsAllMutexes(db) );
   for(i=OMIT_TEMPDB; i<db->nDb; i++){
     int j = (i<2) ? i^1 : i;  /* Search TEMP before MAIN */
-    if( zDb && sqlite3StrICmp(db->aDb[j].zDbSName, zDb) ) continue;
+    if( zDb && sqlite3DbIsNamed(db, j, zDb)==0 ) continue;
     assert( sqlite3SchemaMutexHeld(db, j, 0) );
     pTrigger = sqlite3HashFind(&(db->aDb[j].pSchema->trigHash), zName);
     if( pTrigger ) break;
@@ -649,8 +650,8 @@ void sqlite3DropTriggerPtr(Parse *pParse, Trigger *pTrigger){
   */
   if( (v = sqlite3GetVdbe(pParse))!=0 ){
     sqlite3NestedParse(pParse,
-       "DELETE FROM %Q.%s WHERE name=%Q AND type='trigger'",
-       db->aDb[iDb].zDbSName, MASTER_NAME, pTrigger->zName
+       "DELETE FROM %Q." DFLT_SCHEMA_TABLE " WHERE name=%Q AND type='trigger'",
+       db->aDb[iDb].zDbSName, pTrigger->zName
     );
     sqlite3ChangeCookie(pParse, iDb);
     sqlite3VdbeAddOp4(v, OP_DropTrigger, iDb, 0, 0, pTrigger->zName, 0);

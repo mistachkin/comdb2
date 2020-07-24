@@ -250,12 +250,21 @@ void sqlite3FinishCoding(Parse *pParse){
       */
       sqlite3AutoincrementBegin(pParse);
 
-      /* Code constant expressions that where factored out of inner loops */
+      /* Code constant expressions that where factored out of inner loops.
+      **
+      ** The pConstExpr list might also contain expressions that we simply
+      ** want to keep around until the Parse object is deleted.  Such
+      ** expressions have iConstExprReg==0.  Do not generate code for
+      ** those expressions, of course.
+      */
       if( pParse->pConstExpr ){
         ExprList *pEL = pParse->pConstExpr;
         pParse->okConstFactor = 0;
         for(i=0; i<pEL->nExpr; i++){
-          sqlite3ExprCode(pParse, pEL->a[i].pExpr, pEL->a[i].u.iConstExprReg);
+          int iReg = pEL->a[i].u.iConstExprReg;
+          if( iReg>0 ){
+            sqlite3ExprCode(pParse, pEL->a[i].pExpr, iReg);
+          }
         }
       }
 
@@ -295,7 +304,7 @@ void sqlite3FinishCoding(Parse *pParse){
 ** outermost parser.
 **
 ** Not everything is nestable.  This facility is designed to permit
-** INSERT, UPDATE, and DELETE operations against SQLITE_MASTER.  Use
+** INSERT, UPDATE, and DELETE operations against the schema table.  Use
 ** care if you decide to try to use this routine for some other purposes.
 */
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
@@ -397,7 +406,7 @@ int sqlite3UserAuthTable(const char *zTable){
 static Table *sqlite3FindTable_int(
   sqlite3 *db,
   const char *zName,
-  const char *czDatabase,
+  const char *zDatabase,
   int create,
   int in_analysis_load
 ){
@@ -408,23 +417,20 @@ Table *sqlite3FindTable(sqlite3 *db, const char *zName, const char *zDatabase){
   int i;
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-  const char *dbName = NULL;
-  int rc = 0;
-  int already_searched_fdb;
-  char uri[128];
-  const char *fqDbname = NULL;
   char *dbAlias = NULL;
-  char *zDatabase = (char*)czDatabase;
+  int already_searched_fdb;
+  const char *dbName = NULL;
+  const char *fqDbname = NULL;
 
-  assert( zName!=0 );
+  assert( zName!=0 ); /* TODO: Which callers can cause this? */
 
 retry_alias:
-  dbName = fdb_parse_comdb2_remote_dbname(zDatabase, &fqDbname);
-
   already_searched_fdb = 0;
+  dbName = fdb_parse_comdb2_remote_dbname(zDatabase, &fqDbname);
 
 retry_after_fdb_creation:
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+
   /* All mutexes are required for schema access.  Make sure we hold them. */
   assert( zDatabase!=0 || sqlite3BtreeHoldsAllMutexes(db) );
 #if SQLITE_USER_AUTHENTICATION
@@ -434,32 +440,65 @@ retry_after_fdb_creation:
     return 0;
   }
 #endif
-  while(1){
-    for(i=OMIT_TEMPDB; i<db->nDb; i++){
-      int j = (i<2) ? i^1 : i;   /* Search TEMP before MAIN */
+  if( zDatabase ){
+    for(i=0; i<db->nDb; i++){
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-      if( dbName==0 || sqlite3StrICmp(dbName, db->aDb[j].zDbSName)==0 ){
+      if( sqlite3StrICmp(dbName, db->aDb[i].zDbSName)==0 ) break;
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-      if( zDatabase==0 || sqlite3StrICmp(zDatabase, db->aDb[j].zDbSName)==0 ){
+      if( sqlite3StrICmp(zDatabase, db->aDb[i].zDbSName)==0 ) break;
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-        assert( sqlite3SchemaMutexHeld(db, j, 0) );
-        p = sqlite3HashFind(&db->aDb[j].pSchema->tblHash, zName);
+    }
+    if( i>=db->nDb ){
+      /* No match against the official names.  But always match "main"
+      ** to schema 0 as a legacy fallback. */
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-        if( p && i<=1 ) return p;
+      if( sqlite3StrICmp(dbName,"main")==0 ){
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-        if( p ) return p;
+      if( sqlite3StrICmp(zDatabase,"main")==0 ){
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+        i = 0;
+      }else{
+        return 0;
       }
     }
-    /* Not found.  If the name we were looking for was temp.sqlite_master
-    ** then change the name to sqlite_temp_master and try again. */
-    if( sqlite3StrICmp(zName, MASTER_NAME)!=0 ) break;
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-    if( sqlite3_stricmp(dbName, db->aDb[1].zDbSName)!=0 ) break;
-#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-    if( sqlite3_stricmp(zDatabase, db->aDb[1].zDbSName)!=0 ) break;
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-    zName = TEMP_MASTER_NAME;
+    p = sqlite3HashFind(&db->aDb[i].pSchema->tblHash, zName);
+    if( p==0 && sqlite3StrNICmp(zName, "sqlite_", 7)==0 ){
+      if( i==1 ){
+        if( sqlite3StrICmp(zName+7, ALT_TEMP_SCHEMA_TABLE+7)==0
+         || sqlite3StrICmp(zName+7, ALT_SCHEMA_TABLE+7)==0
+         || sqlite3StrICmp(zName+7, DFLT_SCHEMA_TABLE+7)==0
+        ){
+          p = sqlite3HashFind(&db->aDb[1].pSchema->tblHash, 
+                              DFLT_TEMP_SCHEMA_TABLE);
+        }
+      }else{
+        if( sqlite3StrICmp(zName+7, ALT_SCHEMA_TABLE+7)==0 ){
+          p = sqlite3HashFind(&db->aDb[i].pSchema->tblHash,
+                              DFLT_SCHEMA_TABLE);
+        }
+      }
+    }
+  }else{
+    /* Match against TEMP first */
+    p = sqlite3HashFind(&db->aDb[1].pSchema->tblHash, zName);
+    if( p ) return p;
+    /* The main database is second */
+    p = sqlite3HashFind(&db->aDb[0].pSchema->tblHash, zName);
+    if( p ) return p;
+    /* Attached databases are in order of attachment */
+    for(i=2; i<db->nDb; i++){
+      assert( sqlite3SchemaMutexHeld(db, i, 0) );
+      p = sqlite3HashFind(&db->aDb[i].pSchema->tblHash, zName);
+      if( p ) break;
+    }
+    if( p==0 && sqlite3StrNICmp(zName, "sqlite_", 7)==0 ){
+      if( sqlite3StrICmp(zName+7, ALT_SCHEMA_TABLE+7)==0 ){
+        p = sqlite3HashFind(&db->aDb[0].pSchema->tblHash, DFLT_SCHEMA_TABLE);
+      }else if( sqlite3StrICmp(zName+7, ALT_TEMP_SCHEMA_TABLE+7)==0 ){
+        p = sqlite3HashFind(&db->aDb[1].pSchema->tblHash, 
+                            DFLT_TEMP_SCHEMA_TABLE);
+      }
+    }
   }
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
   /*
@@ -470,10 +509,9 @@ retry_after_fdb_creation:
   ** engines with wrong queries; this introduce random syntax errors
   */
   if( i>1 && p && !zDatabase ){
-    p = NULL;
+    p = 0;
     goto done;
   }
-
   /* so we found the table, we are done */
   if( likely(p) ){
     if( unlikely(zDatabase) && !db->init.busy ){
@@ -483,12 +521,11 @@ retry_after_fdb_creation:
         logmsg(LOGMSG_USER,
                "Remote db table exists and class mismatches \"%s:%s\"\n",
                fqDbname, zName);
-        p = NULL;
+        p = 0;
       }
     }
     goto done;
   }
-
   /* if we did not find the table and we don't have a database name
   ** check to see if this is an actual alias
   */
@@ -502,91 +539,75 @@ retry_after_fdb_creation:
       goto retry_alias;
     }
   }
-
   /* at this point we should have a database name, or we are done */
-  if( !zDatabase ){
+  if( !zDatabase || !fqDbname ){
     goto done;
   }
-
   /* if this a local table, we are done */
-  if(!strcmp(dbName, "main") || !strcmp(dbName, "temp") ){
+  if( !strcmp(dbName, "main") || !strcmp(dbName, "temp") ){
     goto done;
   }
-
   /* if we are only doing a lookup and we don't intend to populate
   ** sqlite schema, we are done
   */
   if( !create ){
     goto done;
   }
-
   /* all that follows handles the case when we do have a remote
   ** database name and a table name and we are trying to find them
   ** remotely
   */
   if( !already_searched_fdb && (db->flags & SQLITE_PrepareOnly)==0 ){
-    int        version = 0;
-    char       *zErrDyn = NULL;
+    int rc, version = 0;
+    char *zErrDyn = NULL;
 
     if( gbl_fdb_track ){
       logmsg(LOGMSG_USER, "Trying to locate \"%s:%s\"\n", fqDbname, zName);
     }
-
     rc = sqlite3AddAndLockTable(db, fqDbname, zName, &version,
-          in_analysis_load);
+                                in_analysis_load);
     if( rc ){
-        if( gbl_fdb_track )
-            logmsg(LOGMSG_USER, "No foreign table \"%s:%s\"\n", fqDbname, zName);
-       assert(p==NULL);
-       goto done;
+      if( gbl_fdb_track ){
+        logmsg(LOGMSG_USER, "No foreign table \"%s:%s\"\n", fqDbname, zName);
+      }
+      assert( !p );
+      goto done;
     }
-
     if( gbl_fdb_track ){
       logmsg(LOGMSG_USER, "Found new foreign table \"%s:%s\" version %d\n", 
-          fqDbname, zName, version);
+             fqDbname, zName, version);
     }
-
-    snprintf(uri, sizeof(uri), "%s.%s", dbName, zName);
-
     /* NOTE: we'll use the complete name as zName to avoid handling
     ** collisions that could appear when the same table name is
     ** attached from two different databases
     */
-    rc = comdb2_dynamic_attach(db, NULL, 0, NULL, uri, dbName,
-        &zErrDyn, version);
-
+    snprintf(uri, sizeof(uri), "%s.%s", dbName, zName);
+    rc = comdb2_dynamic_attach(db, NULL, 0, NULL, uri, dbName, &zErrDyn,
+                               version);
     if( sqlite3UnlockTable(dbName, zName) ){
       logmsg(LOGMSG_ERROR, "%s: failed to unlock %s.%s\n", __func__,
-          fqDbname, zName);
+             fqDbname, zName);
     }
-
-    if( rc || zErrDyn ) {
+    if( rc || zErrDyn ){
       logmsg(LOGMSG_ERROR, "%s: failed to find table %s rc=%d %s\n",
-          __func__, uri, rc, (zErrDyn)?zErrDyn:"");
-
-      assert(p==NULL);
+             __func__, uri, rc, (zErrDyn)?zErrDyn:"");
+      assert( !p );
       goto done;
     }
-
     already_searched_fdb = 1;
     goto retry_after_fdb_creation;
   }else{
     /* if the remote table was checked already, we are done */
-    assert(p==NULL);
-    if( gbl_fdb_track )
-        logmsg(LOGMSG_USER, "No foreign table \"%s:%s\"\n", fqDbname, zName);
+    if( gbl_fdb_track ){
+      logmsg(LOGMSG_USER, "No foreign table \"%s:%s\"\n", fqDbname, zName);
+    }
+    assert( !p );
     goto done;
   }
-
 done:
-  if( unlikely(dbAlias) ){
-    free(dbAlias);
-  }
-
-  return p;
-#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-  return 0;
+  if( unlikely(dbAlias) ){ free(dbAlias); }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+  return p;
 }
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
@@ -741,8 +762,9 @@ Table *sqlite3LocateTableItem(
     }
     return sqlite3LocateTable(pParse, flags, tblName, zDb);
   }
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   return sqlite3LocateTable(pParse, flags, p->zName, zDb);
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 }
 
 /*
@@ -766,7 +788,7 @@ Index *sqlite3FindIndex(sqlite3 *db, const char *zName, const char *zDb){
     int j = (i<2) ? i^1 : i;  /* Search TEMP before MAIN */
     Schema *pSchema = db->aDb[j].pSchema;
     assert( pSchema );
-    if( zDb && sqlite3StrICmp(zDb, db->aDb[j].zDbSName) ) continue;
+    if( zDb && sqlite3DbIsNamed(db, j, zDb)==0 ) continue;
     assert( sqlite3SchemaMutexHeld(db, j, 0) );
     p = sqlite3HashFind(&pSchema->idxHash, zName);
     if( p ) break;
@@ -954,6 +976,7 @@ void sqlite3DeleteColumnNames(sqlite3 *db, Table *pTable){
   assert( pTable!=0 );
   if( (pCol = pTable->aCol)!=0 ){
     for(i=0; i<pTable->nCol; i++, pCol++){
+      assert( pCol->zName==0 || pCol->hName==sqlite3StrIHash(pCol->zName) );
       sqlite3DbFree(db, pCol->zName);
       sqlite3ExprDelete(db, pCol->pDflt);
       sqlite3DbFree(db, pCol->zColl);
@@ -1083,10 +1106,10 @@ char *sqlite3NameFromToken(sqlite3 *db, Token *pName){
 ** Open the sqlite_master table stored in database number iDb for
 ** writing. The table is opened using cursor 0.
 */
-void sqlite3OpenMasterTable(Parse *p, int iDb){
+void sqlite3OpenSchemaTable(Parse *p, int iDb){
   Vdbe *v = sqlite3GetVdbe(p);
-  sqlite3TableLock(p, iDb, MASTER_ROOT, 1, MASTER_NAME);
-  sqlite3VdbeAddOp4Int(v, OP_OpenWrite, 0, MASTER_ROOT, iDb, 5);
+  sqlite3TableLock(p, iDb, SCHEMA_ROOT, 1, DFLT_SCHEMA_TABLE);
+  sqlite3VdbeAddOp4Int(v, OP_OpenWrite, 0, SCHEMA_ROOT, iDb, 5);
   if( p->nTab==0 ){
     p->nTab = 1;
   }
@@ -1489,7 +1512,7 @@ void sqlite3StartTable(
 #endif
 
   /* Begin generating the code that will insert the table record into
-  ** the SQLITE_MASTER table.  Note in particular that we must go ahead
+  ** the schema table.  Note in particular that we must go ahead
   ** and allocate the record number for the table entry now.  Before any
   ** PRIMARY KEY or UNIQUE keywords are parsed.  Those keywords will cause
   ** indices to be created and the table record must come before the 
@@ -1543,7 +1566,7 @@ void sqlite3StartTable(
       pParse->addrCrTab =
          sqlite3VdbeAddOp3(v, OP_CreateBtree, iDb, reg2, BTREE_INTKEY);
     }
-    sqlite3OpenMasterTable(pParse, iDb);
+    sqlite3OpenSchemaTable(pParse, iDb);
     sqlite3VdbeAddOp2(v, OP_NewRowid, 0, reg1);
     sqlite3VdbeAddOp4(v, OP_Blob, 6, reg3, 0, nullRow, P4_STATIC);
     sqlite3VdbeAddOp3(v, OP_Insert, 0, reg3, reg1);
@@ -1621,6 +1644,7 @@ void sqlite3AddColumn(Parse *pParse, Token *pName, Token *pType){
   pCol = &p->aCol[p->nCol];
   memset(pCol, 0, sizeof(p->aCol[0]));
   pCol->zName = z;
+  pCol->hName = sqlite3StrIHash(z);
   sqlite3ColumnPropertiesFromName(p, pCol);
  
   if( pType->n==0 ){
@@ -2592,6 +2616,28 @@ static void convertToWithoutRowidTable(Parse *pParse, Table *pTab){
   recomputeColumnsNotIndexed(pPk);
 }
 
+
+#ifndef SQLITE_OMIT_VIRTUALTABLE
+/*
+** Return true if pTab is a virtual table and zName is a shadow table name
+** for that virtual table.
+*/
+int sqlite3IsShadowTableOf(sqlite3 *db, Table *pTab, const char *zName){
+  int nName;                    /* Length of zName */
+  Module *pMod;                 /* Module for the virtual table */
+
+  if( !IsVirtual(pTab) ) return 0;
+  nName = sqlite3Strlen30(pTab->zName);
+  if( sqlite3_strnicmp(zName, pTab->zName, nName)!=0 ) return 0;
+  if( zName[nName]!='_' ) return 0;
+  pMod = (Module*)sqlite3HashFind(&db->aModule, pTab->azModuleArg[0]);
+  if( pMod==0 ) return 0;
+  if( pMod->pModule->iVersion<3 ) return 0;
+  if( pMod->pModule->xShadowName==0 ) return 0;
+  return pMod->pModule->xShadowName(zName+nName+1);
+}
+#endif /* ifndef SQLITE_OMIT_VIRTUALTABLE */
+
 #ifndef SQLITE_OMIT_VIRTUALTABLE
 /*
 ** Return true if zName is a shadow table name in the current database
@@ -2603,8 +2649,6 @@ static void convertToWithoutRowidTable(Parse *pParse, Table *pTab){
 int sqlite3ShadowTableName(sqlite3 *db, const char *zName){
   char *zTail;                  /* Pointer to the last "_" in zName */
   Table *pTab;                  /* Table that zName is a shadow of */
-  Module *pMod;                 /* Module for the virtual table */
-
   zTail = strrchr(zName, '_');
   if( zTail==0 ) return 0;
   *zTail = 0;
@@ -2612,13 +2656,36 @@ int sqlite3ShadowTableName(sqlite3 *db, const char *zName){
   *zTail = '_';
   if( pTab==0 ) return 0;
   if( !IsVirtual(pTab) ) return 0;
-  pMod = (Module*)sqlite3HashFind(&db->aModule, pTab->azModuleArg[0]);
-  if( pMod==0 ) return 0;
-  if( pMod->pModule->iVersion<3 ) return 0;
-  if( pMod->pModule->xShadowName==0 ) return 0;
-  return pMod->pModule->xShadowName(zTail+1);
+  return sqlite3IsShadowTableOf(db, pTab, zName);
 }
 #endif /* ifndef SQLITE_OMIT_VIRTUALTABLE */
+
+
+#ifdef SQLITE_DEBUG
+/*
+** Mark all nodes of an expression as EP_Immutable, indicating that
+** they should not be changed.  Expressions attached to a table or
+** index definition are tagged this way to help ensure that we do
+** not pass them into code generator routines by mistake.
+*/
+static int markImmutableExprStep(Walker *pWalker, Expr *pExpr){
+  ExprSetVVAProperty(pExpr, EP_Immutable);
+  return WRC_Continue;
+}
+static void markExprListImmutable(ExprList *pList){
+  if( pList ){
+    Walker w;
+    memset(&w, 0, sizeof(w));
+    w.xExprCallback = markImmutableExprStep;
+    w.xSelectCallback = sqlite3SelectWalkNoop;
+    w.xSelectCallback2 = 0;
+    sqlite3WalkExprList(&w, pList);
+  }
+}
+#else
+#define markExprListImmutable(X)  /* no-op */
+#endif /* SQLITE_DEBUG */
+
 
 /*
 ** This routine is called to report the final ")" that terminates
@@ -2720,6 +2787,8 @@ void sqlite3EndTable(
       ** actually be used if PRAGMA writable_schema=ON is set. */
       sqlite3ExprListDelete(db, p->pCheck);
       p->pCheck = 0;
+    }else{
+      markExprListImmutable(p->pCheck);
     }
   }
 #endif /* !defined(SQLITE_OMIT_CHECK) */
@@ -2762,7 +2831,7 @@ void sqlite3EndTable(
   }
 
   /* If not initializing, then create a record for the new table
-  ** in the SQLITE_MASTER table of the database.
+  ** in the schema table of the database.
   **
   ** If this is a TEMPORARY table, write the entry into the auxiliary
   ** file instead of into the main database file.
@@ -2870,7 +2939,7 @@ void sqlite3EndTable(
     }
 
     /* A slot for the record has already been allocated in the 
-    ** SQLITE_MASTER table.  We just need to update that slot with all
+    ** schema table.  We just need to update that slot with all
     ** the information we've collected.
     */
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
@@ -2905,10 +2974,10 @@ void sqlite3EndTable(
     }
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     sqlite3NestedParse(pParse,
-      "UPDATE %Q.%s "
-         "SET type='%s', name=%Q, tbl_name=%Q, rootpage=#%d, sql=%Q "
-       "WHERE rowid=#%d",
-      db->aDb[iDb].zDbSName, MASTER_NAME,
+      "UPDATE %Q." DFLT_SCHEMA_TABLE
+      " SET type='%s', name=%Q, tbl_name=%Q, rootpage=#%d, sql=%Q"
+      " WHERE rowid=#%d",
+      db->aDb[iDb].zDbSName,
       zType,
       p->zName,
       p->zName,
@@ -3037,7 +3106,7 @@ void sqlite3CreateView(
   sEnd.z = &z[n-1];
   sEnd.n = 1;
 
-  /* Use sqlite3EndTable() to add the view to the SQLITE_MASTER table */
+  /* Use sqlite3EndTable() to add the view to the schema table */
   sqlite3EndTable(pParse, 0, &sEnd, 0, 0);
 
 create_view_fail:
@@ -3279,8 +3348,9 @@ static void destroyRootPage(Parse *pParse, int iTable, int iDb){
   ** token for additional information.
   */
   sqlite3NestedParse(pParse, 
-     "UPDATE %Q.%s SET rootpage=%d WHERE #%d AND rootpage=#%d",
-     pParse->db->aDb[iDb].zDbSName, MASTER_NAME, iTable, r1, r1);
+     "UPDATE %Q." DFLT_SCHEMA_TABLE
+     " SET rootpage=%d WHERE #%d AND rootpage=#%d",
+     pParse->db->aDb[iDb].zDbSName, iTable, r1, r1);
 #endif
   sqlite3ReleaseTempReg(pParse, r1);
 }
@@ -3405,7 +3475,7 @@ void sqlite3CodeDropTable(Parse *pParse, Table *pTab, int iDb, int isView){
   }
 #endif
 
-  /* Drop all SQLITE_MASTER table and index entries that refer to the
+  /* Drop all entries in the schema table that refer to the
   ** table. The program name loops through the master table and deletes
   ** every row that refers to a table of the same name as the one being
   ** dropped. Triggers are handled separately because a trigger can be
@@ -3413,8 +3483,9 @@ void sqlite3CodeDropTable(Parse *pParse, Table *pTab, int iDb, int isView){
   ** database.
   */
   sqlite3NestedParse(pParse, 
-      "DELETE FROM %Q.%s WHERE tbl_name=%Q and type!='trigger'",
-      pDb->zDbSName, MASTER_NAME, pTab->zName);
+      "DELETE FROM %Q." DFLT_SCHEMA_TABLE
+      " WHERE tbl_name=%Q and type!='trigger'",
+      pDb->zDbSName, pTab->zName);
   if( !isView && !IsVirtual(pTab) ){
     destroyTable(pParse, pTab);
   }
@@ -4474,11 +4545,11 @@ void sqlite3CreateIndex(
       */
       sqlite3NestedParse(pParse, 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-          "INSERT INTO %Q.%s VALUES('index',%Q,%Q,#%d,%Q,NULL);",
+          "INSERT INTO %Q." DFLT_SCHEMA_TABLE " VALUES('index',%Q,%Q,#%d,%Q,NULL);",
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-          "INSERT INTO %Q.%s VALUES('index',%Q,%Q,#%d,%Q);",
+          "INSERT INTO %Q." DFLT_SCHEMA_TABLE " VALUES('index',%Q,%Q,#%d,%Q);",
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-          db->aDb[iDb].zDbSName, MASTER_NAME,
+          db->aDb[iDb].zDbSName,
           pIndex->zName,
           pTab->zName,
           iMem,
@@ -4554,9 +4625,10 @@ exit_create_index:
 ** are based on typical values found in actual indices.
 */
 void sqlite3DefaultRowEst(Index *pIdx){
-  /*                10,  9,  8,  7,  6 */
-  LogEst aVal[] = { 33, 32, 30, 28, 26 };
+               /*                10,  9,  8,  7,  6 */
+  static const LogEst aVal[] = { 33, 32, 30, 28, 26 };
   LogEst *a = pIdx->aiRowLogEst;
+  LogEst x;
   int nCopy = MIN(ArraySize(aVal), pIdx->nKeyCol);
   int i;
 
@@ -4565,10 +4637,21 @@ void sqlite3DefaultRowEst(Index *pIdx){
 
   /* Set the first entry (number of rows in the index) to the estimated 
   ** number of rows in the table, or half the number of rows in the table
-  ** for a partial index.   But do not let the estimate drop below 10. */
-  a[0] = pIdx->pTable->nRowLogEst;
-  if( pIdx->pPartIdxWhere!=0 ) a[0] -= 10;  assert( 10==sqlite3LogEst(2) );
-  if( a[0]<33 ) a[0] = 33;                  assert( 33==sqlite3LogEst(10) );
+  ** for a partial index.
+  **
+  ** 2020-05-27:  If some of the stat data is coming from the sqlite_stat1
+  ** table but other parts we are having to guess at, then do not let the
+  ** estimated number of rows in the table be less than 1000 (LogEst 99).
+  ** Failure to do this can cause the indexes for which we do not have
+  ** stat1 data to be ignored by the query planner.  tag-20200527-1
+  */
+  x = pIdx->pTable->nRowLogEst;
+  assert( 99==sqlite3LogEst(1000) );
+  if( x<99 ){
+    pIdx->pTable->nRowLogEst = x = 99;
+  }
+  if( pIdx->pPartIdxWhere!=0 ) x -= 10;  assert( 10==sqlite3LogEst(2) );
+  a[0] = x;
 
   /* Estimate that a[1] is 10, a[2] is 9, a[3] is 8, a[4] is 7, a[5] is
   ** 6 and each subsequent value (if any) is 5.  */
@@ -4647,8 +4730,8 @@ void sqlite3DropIndex(Parse *pParse, SrcList *pName, int ifExists){
   if( v ){
     sqlite3BeginWriteOperation(pParse, 1, iDb);
     sqlite3NestedParse(pParse,
-       "DELETE FROM %Q.%s WHERE name=%Q AND type='index'",
-       db->aDb[iDb].zDbSName, MASTER_NAME, pIndex->zName
+       "DELETE FROM %Q." DFLT_SCHEMA_TABLE " WHERE name=%Q AND type='index'",
+       db->aDb[iDb].zDbSName, pIndex->zName
     );
     sqlite3ClearStatTables(pParse, iDb, "idx", pIndex->zName);
     sqlite3ChangeCookie(pParse, iDb);
@@ -5212,7 +5295,7 @@ int sqlite3OpenTempDatabase(Parse *pParse){
     }
     db->aDb[1].pBt = pBt;
     assert( db->aDb[1].pSchema );
-    if( SQLITE_NOMEM==sqlite3BtreeSetPageSize(pBt, db->nextPagesize, -1, 0) ){
+    if( SQLITE_NOMEM==sqlite3BtreeSetPageSize(pBt, db->nextPagesize, 0, 0) ){
       sqlite3OomFault(db);
       return 1;
     }
@@ -5323,7 +5406,7 @@ void sqlite3HaltConstraint(
   u8 p5Errmsg       /* P5_ErrMsg type */
 ){
   Vdbe *v = sqlite3GetVdbe(pParse);
-  assert( (errCode&0xff)==SQLITE_CONSTRAINT );
+  assert( (errCode&0xff)==SQLITE_CONSTRAINT || pParse->nested );
   if( onError==OE_Abort ){
     sqlite3MayAbort(pParse);
   }

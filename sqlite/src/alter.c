@@ -53,22 +53,22 @@ static int isAlterableTable(Parse *pParse, Table *pTab){
 static void renameTestSchema(Parse *pParse, const char *zDb, int bTemp){
   sqlite3NestedParse(pParse, 
       "SELECT 1 "
-      "FROM \"%w\".%s "
+      "FROM \"%w\"." DFLT_SCHEMA_TABLE " "
       "WHERE name NOT LIKE 'sqliteX_%%' ESCAPE 'X'"
       " AND sql NOT LIKE 'create virtual%%'"
       " AND sqlite_rename_test(%Q, sql, type, name, %d)=NULL ",
-      zDb, MASTER_NAME, 
+      zDb,
       zDb, bTemp
   );
 
   if( bTemp==0 ){
     sqlite3NestedParse(pParse, 
         "SELECT 1 "
-        "FROM temp.%s "
+        "FROM temp." DFLT_SCHEMA_TABLE " "
         "WHERE name NOT LIKE 'sqliteX_%%' ESCAPE 'X'"
         " AND sql NOT LIKE 'create virtual%%'"
         " AND sqlite_rename_test(%Q, sql, type, name, 1)=NULL ",
-        MASTER_NAME, zDb 
+        zDb 
     );
   }
 }
@@ -124,7 +124,10 @@ void sqlite3AlterRenameTable(
   /* Check that a table or index named 'zName' does not already exist
   ** in database iDb. If so, this is an error.
   */
-  if( sqlite3FindTable(db, zName, zDb) || sqlite3FindIndex(db, zName, zDb) ){
+  if( sqlite3FindTable(db, zName, zDb)
+   || sqlite3FindIndex(db, zName, zDb)
+   || sqlite3IsShadowTableOf(db, pTab, zName)
+  ){
     sqlite3ErrorMsg(pParse, 
         "there is already another table or index with this name: %s", zName);
     goto exit_rename_table;
@@ -183,17 +186,17 @@ void sqlite3AlterRenameTable(
   /* Rewrite all CREATE TABLE, INDEX, TRIGGER or VIEW statements in
   ** the schema to use the new table name.  */
   sqlite3NestedParse(pParse, 
-      "UPDATE \"%w\".%s SET "
+      "UPDATE \"%w\"." DFLT_SCHEMA_TABLE " SET "
       "sql = sqlite_rename_table(%Q, type, name, sql, %Q, %Q, %d) "
       "WHERE (type!='index' OR tbl_name=%Q COLLATE nocase)"
       "AND   name NOT LIKE 'sqliteX_%%' ESCAPE 'X'"
-      , zDb, MASTER_NAME, zDb, zTabName, zName, (iDb==1), zTabName
+      , zDb, zDb, zTabName, zName, (iDb==1), zTabName
   );
 
   /* Update the tbl_name and name columns of the sqlite_master table
   ** as required.  */
   sqlite3NestedParse(pParse,
-      "UPDATE %Q.%s SET "
+      "UPDATE %Q." DFLT_SCHEMA_TABLE " SET "
           "tbl_name = %Q, "
           "name = CASE "
             "WHEN type='table' THEN %Q "
@@ -203,7 +206,7 @@ void sqlite3AlterRenameTable(
             "ELSE name END "
       "WHERE tbl_name=%Q COLLATE nocase AND "
           "(type='table' OR type='index' OR type='trigger');", 
-      zDb, MASTER_NAME, 
+      zDb,
       zName, zName, zName, 
       nTabName, zTabName
   );
@@ -254,6 +257,22 @@ exit_rename_table:
   sqlite3SrcListDelete(db, pSrc);
   sqlite3DbFree(db, zName);
   db->mDbFlags = savedDbFlags;
+}
+
+/*
+** Write code that will raise an error if the table described by
+** zDb and zTab is not empty.
+*/
+static void sqlite3ErrorIfNotEmpty(
+  Parse *pParse,        /* Parsing context */
+  const char *zDb,      /* Schema holding the table */
+  const char *zTab,     /* Table to check for empty */
+  const char *zErr      /* Error message text */
+){
+  sqlite3NestedParse(pParse,
+     "SELECT raise(ABORT,%Q) FROM \"%w\".\"%w\"",
+     zErr, zDb, zTab
+  );
 }
 
 /*
@@ -308,7 +327,8 @@ void sqlite3AlterFinishAddColumn(Parse *pParse, Token *pColDef){
     return;
   }
   if( pNew->pIndex ){
-    sqlite3ErrorMsg(pParse, "Cannot add a UNIQUE column");
+    sqlite3ErrorMsg(pParse,
+         "Cannot add a UNIQUE column");
     return;
   }
   if( (pCol->colFlags & COLFLAG_GENERATED)==0 ){
@@ -321,15 +341,14 @@ void sqlite3AlterFinishAddColumn(Parse *pParse, Token *pColDef){
       pDflt = 0;
     }
     if( (db->flags&SQLITE_ForeignKeys) && pNew->pFKey && pDflt ){
-      sqlite3ErrorMsg(pParse, 
+      sqlite3ErrorIfNotEmpty(pParse, zDb, zTab,
           "Cannot add a REFERENCES column with non-NULL default value");
-      return;
     }
     if( pCol->notNull && !pDflt ){
-      sqlite3ErrorMsg(pParse, 
+      sqlite3ErrorIfNotEmpty(pParse, zDb, zTab,
           "Cannot add a NOT NULL column with default value NULL");
-      return;
     }
+
 
     /* Ensure the default expression is something that sqlite3ValueFromExpr()
     ** can handle (i.e. not CURRENT_TIME etc.)
@@ -344,14 +363,13 @@ void sqlite3AlterFinishAddColumn(Parse *pParse, Token *pColDef){
         return;
       }
       if( !pVal ){
-        sqlite3ErrorMsg(pParse,"Cannot add a column with non-constant default");
-        return;
+        sqlite3ErrorIfNotEmpty(pParse, zDb, zTab,
+           "Cannot add a column with non-constant default");
       }
       sqlite3ValueFree(pVal);
     }
   }else if( pCol->colFlags & COLFLAG_STORED ){
-    sqlite3ErrorMsg(pParse, "cannot add a STORED column");
-    return;
+    sqlite3ErrorIfNotEmpty(pParse, zDb, zTab, "cannot add a STORED column");
   }
 
 
@@ -365,10 +383,10 @@ void sqlite3AlterFinishAddColumn(Parse *pParse, Token *pColDef){
     }
     db->mDbFlags |= DBFLAG_PreferBuiltin;
     sqlite3NestedParse(pParse, 
-        "UPDATE \"%w\".%s SET "
+        "UPDATE \"%w\"." DFLT_SCHEMA_TABLE " SET "
           "sql = substr(sql,1,%d) || ', ' || %Q || substr(sql,%d) "
         "WHERE type = 'table' AND name = %Q", 
-      zDb, MASTER_NAME, pNew->addColOffset, zCol, pNew->addColOffset+1,
+      zDb, pNew->addColOffset, zCol, pNew->addColOffset+1,
       zTab
     );
     sqlite3DbFree(db, zCol);
@@ -470,6 +488,7 @@ void sqlite3AlterBeginAddColumn(Parse *pParse, SrcList *pSrc){
   for(i=0; i<pNew->nCol; i++){
     Column *pCol = &pNew->aCol[i];
     pCol->zName = sqlite3DbStrDup(db, pCol->zName);
+    pCol->hName = sqlite3StrIHash(pCol->zName);
     pCol->zColl = 0;
     pCol->pDflt = 0;
   }
@@ -579,21 +598,20 @@ void sqlite3AlterRenameColumn(
   assert( pNew->n>0 );
   bQuote = sqlite3Isquote(pNew->z[0]);
   sqlite3NestedParse(pParse, 
-      "UPDATE \"%w\".%s SET "
+      "UPDATE \"%w\"." DFLT_SCHEMA_TABLE " SET "
       "sql = sqlite_rename_column(sql, type, name, %Q, %Q, %d, %Q, %d, %d) "
       "WHERE name NOT LIKE 'sqliteX_%%' ESCAPE 'X' "
       " AND (type != 'index' OR tbl_name = %Q)"
       " AND sql NOT LIKE 'create virtual%%'",
-      zDb, MASTER_NAME, 
+      zDb,
       zDb, pTab->zName, iCol, zNew, bQuote, iSchema==1,
       pTab->zName
   );
 
   sqlite3NestedParse(pParse, 
-      "UPDATE temp.%s SET "
+      "UPDATE temp." DFLT_SCHEMA_TABLE " SET "
       "sql = sqlite_rename_column(sql, type, name, %Q, %Q, %d, %Q, %d, 1) "
       "WHERE type IN ('trigger', 'view')",
-      MASTER_NAME, 
       zDb, pTab->zName, iCol, zNew, bQuote
   );
 
@@ -700,7 +718,7 @@ void *sqlite3RenameTokenMap(Parse *pParse, void *pPtr, Token *pToken){
   RenameToken *pNew;
   assert( pPtr || pParse->db->mallocFailed );
   renameTokenCheckAll(pParse, pPtr);
-  if( pParse->eParseMode!=PARSE_MODE_UNMAP ){
+  if( ALWAYS(pParse->eParseMode!=PARSE_MODE_UNMAP) ){
     pNew = sqlite3DbMallocZero(pParse->db, sizeof(RenameToken));
     if( pNew ){
       pNew->p = pPtr;
@@ -759,6 +777,21 @@ static void renameWalkWith(Walker *pWalker, Select *pSelect){
 }
 
 /*
+** Unmap all tokens in the IdList object passed as the second argument.
+*/
+static void unmapColumnIdlistNames(
+  Parse *pParse,
+  IdList *pIdList
+){
+  if( pIdList ){
+    int ii;
+    for(ii=0; ii<pIdList->nId; ii++){
+      sqlite3RenameTokenRemap(pParse, 0, (void*)pIdList->a[ii].zName);
+    }
+  }
+}
+
+/*
 ** Walker callback used by sqlite3RenameExprUnmap().
 */
 static int renameUnmapSelectCb(Walker *pWalker, Select *p){
@@ -779,6 +812,7 @@ static int renameUnmapSelectCb(Walker *pWalker, Select *p){
     for(i=0; i<pSrc->nSrc; i++){
       sqlite3RenameTokenRemap(pParse, 0, (void*)pSrc->a[i].zName);
       if( sqlite3WalkExpr(pWalker, pSrc->a[i].pOn) ) return WRC_Abort;
+      unmapColumnIdlistNames(pParse, pSrc->a[i].pUsing);
     }
   }
 
@@ -986,6 +1020,7 @@ static void renameColumnIdlistNames(
     }
   }
 }
+
 
 /*
 ** Parse the SQL statement zSql using Parse object (*p). The Parse object
