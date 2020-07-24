@@ -655,7 +655,11 @@ int sqlite3VdbeNextOpcode(Vdbe*,Mem*,int,int*,int*,Op**);
 char *sqlite3VdbeDisplayP4(sqlite3*,Op*);
 #endif
 #if defined(SQLITE_ENABLE_EXPLAIN_COMMENTS)
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+char *sqlite3VdbeDisplayComment(sqlite3*,Vdbe*,const Op*,const char*);
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 char *sqlite3VdbeDisplayComment(sqlite3*,const Op*,const char*);
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 #endif
 #if !defined(SQLITE_OMIT_EXPLAIN)
 int sqlite3VdbeList(Vdbe*);

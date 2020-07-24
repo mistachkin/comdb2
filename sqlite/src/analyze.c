@@ -1068,7 +1068,7 @@ static void statGet(
 #ifdef SQLITE_ENABLE_STAT4
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
   {
-    Stat4Sample *pS = NULL;
+    StatSample *pS = NULL;
     tRowcnt *aCnt = NULL;
     int scale = 1;
     int iGet;
@@ -1402,15 +1402,15 @@ static void analyzeOneTable(
     /* we only care about our shared tables */
     if( iDb==0 ){
       i64 actualCount = analyze_get_nrecs(pIdx->tnum);
-      sqlite3VdbeAddOp4Dup8(v, OP_Int64, 0, regStat4+3, 0,
+      sqlite3VdbeAddOp4Dup8(v, OP_Int64, 0, regStat+3, 0,
                             (const u8*)&actualCount, P4_INT64);
     }else{
       /* TODO: Is there a better default value here? */
-      sqlite3VdbeAddOp2(v, OP_Integer, 0, regStat4+3);
+      sqlite3VdbeAddOp2(v, OP_Integer, 0, regStat+3);
     }
 #endif
-    sqlite3VdbeAddOp2(v, OP_Integer, nCol+1, regStat4+1);
-    sqlite3VdbeAddOp2(v, OP_Count, iIdxCur, regStat4+2);
+    sqlite3VdbeAddOp2(v, OP_Integer, nCol+1, regStat+1);
+    sqlite3VdbeAddOp2(v, OP_Count, iIdxCur, regStat+2);
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     sqlite3VdbeAddOp2(v, OP_Integer, nCol, regStat+1);
     assert( regRowid==regStat+2 );
@@ -1531,7 +1531,7 @@ static void analyzeOneTable(
     assert( regChng==(regStat+1) );
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
 #ifdef SQLITE_ENABLE_STAT4
-    assert( regSampleRow==(regStat4+2) );
+    assert( regSampleRow==(regStat+2) );
     sqlite3VdbeAddOp3(v, OP_MakeRecord, regPrev, nCol, regSampleRow);
 #endif
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
@@ -1613,7 +1613,7 @@ static void analyzeOneTable(
       callStatGet(pParse, regStat, STAT_GET_NLT, regLt);
       callStatGet(pParse, regStat, STAT_GET_NDLT, regDLt);
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-      callStatGet(pParse, regStat4, STAT_GET_ROW, regSample);
+      callStatGet(pParse, regStat, STAT_GET_ROW, regSample);
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
       sqlite3VdbeAddOp4Int(v, seekOp, iTabCur, addrNext, regSampleRowid, 0);
       VdbeCoverage(v);
