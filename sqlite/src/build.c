@@ -558,6 +558,7 @@ retry_after_fdb_creation:
   ** remotely
   */
   if( !already_searched_fdb && (db->flags & SQLITE_PrepareOnly)==0 ){
+    char uri[128];
     int rc, version = 0;
     char *zErrDyn = NULL;
 
@@ -762,9 +763,8 @@ Table *sqlite3LocateTableItem(
     }
     return sqlite3LocateTable(pParse, flags, tblName, zDb);
   }
-#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-  return sqlite3LocateTable(pParse, flags, p->zName, zDb);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+  return sqlite3LocateTable(pParse, flags, p->zName, zDb);
 }
 
 /*
@@ -2946,10 +2946,10 @@ void sqlite3EndTable(
     if( iDb==1 ){
       /* temp tables have no csc2 */
       sqlite3NestedParse(pParse,
-       "UPDATE %Q.%s "
+       "UPDATE %Q." DFLT_SCHEMA_TABLE
        "SET type='%s', name=%Q, tbl_name=%Q, rootpage=#%d, sql=%Q "
        "WHERE rowid=#%d",
-       db->aDb[iDb].zDbSName, MASTER_NAME,
+       db->aDb[iDb].zDbSName,
        zType,
        p->zName,
        p->zName,
@@ -2960,10 +2960,10 @@ void sqlite3EndTable(
     }else{
       /* Add csc2 for comdb2 */
       sqlite3NestedParse(pParse,
-       "UPDATE %Q.%s "
+       "UPDATE %Q." DFLT_SCHEMA_TABLE
        "SET type='%s', name=%Q, tbl_name=%Q, rootpage=#%d, sql=%Q, csc2=NULL "
        "WHERE rowid=#%d",
-       db->aDb[iDb].zDbSName, MASTER_NAME,
+       db->aDb[iDb].zDbSName,
        zType,
        p->zName,
        p->zName,
