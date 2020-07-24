@@ -1427,9 +1427,9 @@ static void analyzeOneTable(
       VdbeCoverage(v);
       sqlite3VdbeAddOp3(v, OP_Count, iIdxCur, regTemp, 1);
     }
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     assert( regTemp2==regStat+4 );
     sqlite3VdbeAddOp2(v, OP_Integer, db->nAnalysisLimit, regTemp2);
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     sqlite3VdbeAddFunctionCall(pParse, 0, regStat+1, regStat, 4,
                                &statInitFuncdef, 0);
 
