@@ -4000,6 +4000,12 @@ int sqlite3BtreeGetReserve(Btree *pBt)
     return 1;
 }
 
+int sqlite3BtreeGetRequestedReserve(Btree*pBt){
+    reqlog_logf(pBt->reqlogger,REQL_TRACE,"GetRequestedReserve(pBt %d) = %d\n",
+                pBt->btreeid, 1);
+    return 0; /* TODO: Is this a valid return? */
+}
+
 /*
 From: D. Richard Hipp <DRH@HWACI.COM>
 To: ALEX SCOTTI, BLOOMBERG/ 731 LEXIN
