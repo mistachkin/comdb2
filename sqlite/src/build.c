@@ -490,14 +490,14 @@ retry_after_fdb_creation:
     /* Match against TEMP first */
     p = sqlite3HashFind(&db->aDb[1].pSchema->tblHash, zName);
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-    if( p ) goto maybe_remote;
+    if( p ) goto done;
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     if( p ) return p;
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     /* The main database is second */
     p = sqlite3HashFind(&db->aDb[0].pSchema->tblHash, zName);
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-    if( p ) goto maybe_remote;
+    if( p ) goto done;
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     if( p ) return p;
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
