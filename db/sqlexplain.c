@@ -722,6 +722,42 @@ void get_one_explain_line(sqlite3 *hndl, strbuf *out, Vdbe *v, int indent,
         if (op->p3)
             strbuf_appendf(out, "Jump to %d if NULL.", op->p3);
         break;
+    case OP_IfNotOpen:
+        strbuf_appendf(out, "Jump to %d if cursor [%d] is not open. ",
+                       op->p2, op->p1);
+        break;
+    case OP_FinishSeek:
+        strbuf_appendf(out, "If cursor [%d] was previously moved via "
+                       "a deferred seek, complete that now. ", op->p1);
+        break;
+    case OP_CursorLock:
+        strbuf_appendf(out, "Lock cursor [%d], preventing writes from "
+                       "other cursors to the same underlying btree. ",
+                       op->p1);
+        break;
+    case OP_CursorUnlock:
+        strbuf_appendf(out, "Unlock cursor [%d], allowing writes from "
+                       "other cursors to the same underlying btree. ",
+                       op->p1);
+        break;
+#ifdef SQLITE_DEBUG
+    case OP_ReleaseReg:
+        strbuf_appendf(out, "Release R%d..R%d", op->p1, op->p1+op->p2);
+        if (op->p3) {
+            int max_ii = op->p2;
+            if( max_ii>31 ) max_ii = 31;
+            for(int ii=0; ii<max_ii; ii++){
+                if( (op->p3 & MASKBIT32(ii))!=0 ){
+                    strbuf_appendf(out, ", excepting R%d", op->p1+ii);
+                }
+            }
+        }
+        if (op->p5) {
+            strbuf_appendf(out, ", while marking as undefined", op->p3);
+        }
+        strbuf_appendf(out, ". ");
+        break;
+#endif
     case OP_IsNull:
     case OP_NotNull:
         strbuf_appendf(out, "Jump to %d if R%d is %s.", op->p2, op->p1,
