@@ -22,27 +22,7 @@
 **     COMMIT
 **     ROLLBACK
 */
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-#include <alloca.h>
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 #include "sqliteInt.h"
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-#include "comdb2Int.h"
-#include "pragma.h"
-#include "logmsg.h"
-
-int has_comdb2_index_for_sqlite(Table *pTab);
-int is_comdb2_index_unique(const char *dbname, char *idx);
-const char* fdb_parse_comdb2_remote_dbname(const char *zDatabase, const char **fqDbname);
-int fdb_validate_existing_table(const char *zDatabase);
-char *fdb_get_alias(const char **p_tablename);
-int comdb2_check_parallel(Parse*);
-void comdb2_create_view(Parse *pParse, const char *view_name,
-                        int view_name_len, const char *zStmt, int temp);
-void comdb2_drop_view(Parse *pParse, SrcList *pName);
-
-extern int gbl_fdb_track;
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 #ifndef SQLITE_OMIT_SHARED_CACHE
 /*
@@ -126,14 +106,6 @@ static void codeTableLocks(Parse *pParse){
   #define codeTableLocks(x)
 #endif
 
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-int sqlite3DbMaskAllZero(yDbMask m, int start){
-  int sz = (SQLITE_MAX_ATTACHED + 9) / 8;
-  int i;
-  for(i=start; i<sz; i++) if( m[i] ) return 0;
-  return 1;
-}
-#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 /*
 ** Return TRUE if the given yDbMask object is empty - if it contains no
 ** 1 bits.  This routine is used by the DbMaskAllZero() and DbMaskNotZero()
@@ -146,7 +118,6 @@ int sqlite3DbMaskAllZero(yDbMask m){
   return 1;
 }
 #endif
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 /*
 ** This routine is called after a single SQL statement has been
@@ -197,34 +168,20 @@ void sqlite3FinishCoding(Parse *pParse){
     ** on each used database.
     */
     if( db->mallocFailed==0 
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-     && (DbMaskNonZero(pParse->cookieMask, 0) || pParse->pConstExpr
-         || pParse->write)
-#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
      && (DbMaskNonZero(pParse->cookieMask) || pParse->pConstExpr)
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     ){
       int iDb, i;
       assert( sqlite3VdbeGetOp(v, 0)->opcode==OP_Init );
       sqlite3VdbeJumpHere(v, 0);
       for(iDb=0; iDb<db->nDb; iDb++){
         Schema *pSchema;
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-        /* DDL/PUT wants a write transaction */
-        if( DbMaskTest(pParse->cookieMask, iDb)==0 && !pParse->write ) continue;
-#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
         if( DbMaskTest(pParse->cookieMask, iDb)==0 ) continue;
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
         sqlite3VdbeUsesBtree(v, iDb);
         pSchema = db->aDb[iDb].pSchema;
         sqlite3VdbeAddOp4Int(v,
           OP_Transaction,                    /* Opcode */
           iDb,                               /* P1 */
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-          pParse->write || DbMaskTest(pParse->writeMask,iDb), /* P2 */
-#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
           DbMaskTest(pParse->writeMask,iDb), /* P2 */
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
           pSchema->schema_cookie,            /* P3 */
           pSchema->iGeneration               /* P4 */
         );
@@ -282,14 +239,6 @@ void sqlite3FinishCoding(Parse *pParse){
     assert( pParse->pAinc==0 || pParse->nTab>0 );
     sqlite3VdbeMakeReady(v, pParse);
     pParse->rc = SQLITE_DONE;
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-    if( pParse->ast ){
-      if( comdb2_check_parallel(pParse) ){
-        pParse->rc = SQLITE_SCHEMA_DOHSQL;
-        return;
-      }
-    }
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   }else{
     pParse->rc = SQLITE_ERROR;
   }
@@ -307,17 +256,8 @@ void sqlite3FinishCoding(Parse *pParse){
 ** INSERT, UPDATE, and DELETE operations against the schema table.  Use
 ** care if you decide to try to use this routine for some other purposes.
 */
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-static void sqlite3NestedParse_int(
-  Parse *pParse,
-  char **pzErrMsg,
-  const char *zFormat,
-  va_list ap
-) {
-#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 void sqlite3NestedParse(Parse *pParse, const char *zFormat, ...){
   va_list ap;
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   char *zSql;
   char *zErrMsg = 0;
   sqlite3 *db = pParse->db;
@@ -325,13 +265,9 @@ void sqlite3NestedParse(Parse *pParse, const char *zFormat, ...){
 
   if( pParse->nErr ) return;
   assert( pParse->nested<10 );  /* Nesting should only be of limited depth */
-#if !defined(SQLITE_BUILDING_FOR_COMDB2)
   va_start(ap, zFormat);
-#endif /* !defined(SQLITE_BUILDING_FOR_COMDB2) */
   zSql = sqlite3VMPrintf(db, zFormat, ap);
-#if !defined(SQLITE_BUILDING_FOR_COMDB2)
   va_end(ap);
-#endif /* !defined(SQLITE_BUILDING_FOR_COMDB2) */
   if( zSql==0 ){
     /* This can result either from an OOM or because the formatted string
     ** exceeds SQLITE_LIMIT_LENGTH.  In the latter case, we need to set
@@ -344,41 +280,11 @@ void sqlite3NestedParse(Parse *pParse, const char *zFormat, ...){
   memcpy(saveBuf, PARSE_TAIL(pParse), PARSE_TAIL_SZ);
   memset(PARSE_TAIL(pParse), 0, PARSE_TAIL_SZ);
   sqlite3RunParser(pParse, zSql, &zErrMsg);
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-  if( pzErrMsg ){ *pzErrMsg = zErrMsg; }
-  else /* sqlite3DbFree(db, zErrMsg); */
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   sqlite3DbFree(db, zErrMsg);
   sqlite3DbFree(db, zSql);
   memcpy(PARSE_TAIL(pParse), saveBuf, PARSE_TAIL_SZ);
   pParse->nested--;
 }
-
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-void sqlite3NestedParse(Parse *pParse, const char *zFormat, ...){
-  va_list ap;
-
-  pParse->preserve_update = 0;
-
-  va_start(ap, zFormat);
-  sqlite3NestedParse_int(pParse, NULL, zFormat, ap);
-  va_end(ap);
-}
-
-void sqlite3NestedParsePreserveFlags(Parse *pParse, const char *zFormat, ...){
-  va_list ap;
-  char *zErrMsg = NULL;
-
-  pParse->preserve_update = 1;
-  va_start(ap, zFormat);
-  sqlite3NestedParse_int(pParse, &zErrMsg, zFormat, ap);
-  va_end(ap);
-  if (zErrMsg) {
-    assert(pParse->zErrMsg == 0);
-    pParse->zErrMsg = zErrMsg;
-  }
-}
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 #if SQLITE_USER_AUTHENTICATION
 /*
@@ -402,34 +308,9 @@ int sqlite3UserAuthTable(const char *zTable){
 **
 ** See also sqlite3LocateTable().
 */
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-static Table *sqlite3FindTable_int(
-  sqlite3 *db,
-  const char *zName,
-  const char *zDatabase,
-  int create,
-  int in_analysis_load
-){
-#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 Table *sqlite3FindTable(sqlite3 *db, const char *zName, const char *zDatabase){
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   Table *p = 0;
   int i;
-
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-  char *dbAlias = NULL;
-  int already_searched_fdb;
-  const char *dbName = NULL;
-  const char *fqDbname = NULL;
-
-  assert( zName!=0 ); /* TODO: Which callers can cause this? */
-
-retry_alias:
-  already_searched_fdb = 0;
-  dbName = fdb_parse_comdb2_remote_dbname(zDatabase, &fqDbname);
-
-retry_after_fdb_creation:
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
   /* All mutexes are required for schema access.  Make sure we hold them. */
   assert( zDatabase!=0 || sqlite3BtreeHoldsAllMutexes(db) );
@@ -442,20 +323,12 @@ retry_after_fdb_creation:
 #endif
   if( zDatabase ){
     for(i=0; i<db->nDb; i++){
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-      if( sqlite3StrICmp(dbName, db->aDb[i].zDbSName)==0 ) break;
-#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
       if( sqlite3StrICmp(zDatabase, db->aDb[i].zDbSName)==0 ) break;
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     }
     if( i>=db->nDb ){
       /* No match against the official names.  But always match "main"
       ** to schema 0 as a legacy fallback. */
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-      if( sqlite3StrICmp(dbName,"main")==0 ){
-#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
       if( sqlite3StrICmp(zDatabase,"main")==0 ){
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
         i = 0;
       }else{
         return 0;
@@ -500,159 +373,8 @@ retry_after_fdb_creation:
       }
     }
   }
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-  /*
-  ** if we did not find the table and there is a foreign database,
-  ** try to match this to a foreign db
-  ** explicit deny using accessing a cached remote table that
-  ** has no database name to prevent using prepopulated sqlite
-  ** engines with wrong queries; this introduce random syntax errors
-  */
-  if( i>1 && p && !zDatabase ){
-    p = 0;
-    goto done;
-  }
-  /* so we found the table, we are done */
-  if( likely(p) ){
-    if( unlikely(zDatabase) && !db->init.busy ){
-      /* we need to validate class here, before
-         shortcutting to "local table" mode */
-      if( fdb_validate_existing_table(zDatabase) ){
-        logmsg(LOGMSG_USER,
-               "Remote db table exists and class mismatches \"%s:%s\"\n",
-               fqDbname, zName);
-        p = 0;
-      }
-    }
-    goto done;
-  }
-  /* if we did not find the table and we don't have a database name
-  ** check to see if this is an actual alias
-  */
-  if( !zDatabase ){
-    /* NOTE: zDatabase is NOT null if we already looked up a foreign
-    ** db and retried, so this code doesn't run twice
-    */
-    dbAlias = fdb_get_alias(&zName);
-    zDatabase = dbAlias;
-    if( zDatabase ){
-      goto retry_alias;
-    }
-  }
-  /* at this point we should have a database name, or we are done */
-  if( !zDatabase || !fqDbname ){
-    goto done;
-  }
-  /* if this a local table, we are done */
-  if( !strcmp(dbName, "main") || !strcmp(dbName, "temp") ){
-    goto done;
-  }
-  /* if we are only doing a lookup and we don't intend to populate
-  ** sqlite schema, we are done
-  */
-  if( !create ){
-    goto done;
-  }
-  /* all that follows handles the case when we do have a remote
-  ** database name and a table name and we are trying to find them
-  ** remotely
-  */
-  if( !already_searched_fdb && (db->flags & SQLITE_PrepareOnly)==0 ){
-    char uri[128];
-    int rc, version = 0;
-    char *zErrDyn = NULL;
-
-    if( gbl_fdb_track ){
-      logmsg(LOGMSG_USER, "Trying to locate \"%s:%s\"\n", fqDbname, zName);
-    }
-    rc = sqlite3AddAndLockTable(db, fqDbname, zName, &version,
-                                in_analysis_load);
-    if( rc ){
-      if( gbl_fdb_track ){
-        logmsg(LOGMSG_USER, "No foreign table \"%s:%s\"\n", fqDbname, zName);
-      }
-      assert( !p );
-      goto done;
-    }
-    if( gbl_fdb_track ){
-      logmsg(LOGMSG_USER, "Found new foreign table \"%s:%s\" version %d\n", 
-             fqDbname, zName, version);
-    }
-    /* NOTE: we'll use the complete name as zName to avoid handling
-    ** collisions that could appear when the same table name is
-    ** attached from two different databases
-    */
-    snprintf(uri, sizeof(uri), "%s.%s", dbName, zName);
-    rc = comdb2_dynamic_attach(db, NULL, 0, NULL, uri, dbName, &zErrDyn,
-                               version);
-    if( sqlite3UnlockTable(dbName, zName) ){
-      logmsg(LOGMSG_ERROR, "%s: failed to unlock %s.%s\n", __func__,
-             fqDbname, zName);
-    }
-    if( rc || zErrDyn ){
-      logmsg(LOGMSG_ERROR, "%s: failed to find table %s rc=%d %s\n",
-             __func__, uri, rc, (zErrDyn)?zErrDyn:"");
-      assert( !p );
-      goto done;
-    }
-    already_searched_fdb = 1;
-    goto retry_after_fdb_creation;
-  }else{
-    /* if the remote table was checked already, we are done */
-    if( gbl_fdb_track ){
-      logmsg(LOGMSG_USER, "No foreign table \"%s:%s\"\n", fqDbname, zName);
-    }
-    assert( !p );
-    goto done;
-  }
-done:
-  if( unlikely(dbAlias) ){ free(dbAlias); }
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   return p;
 }
-
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-/*
-** Locate the in-memory structure that describes a particular database
-** table given the name of that table and (optionally) the name of the
-** database containing the table.  Return NULL if not found.
-**
-** If zDatabase is 0, all databases are searched for the table and the
-** first matching table is returned.  (No checking for duplicate table
-** names is done.)  The search order is TEMP first, then MAIN, then any
-** auxiliary databases added using the ATTACH command.
-**
-** See also sqlite3LocateTable().
-*/
-Table *sqlite3FindTable(sqlite3 *db, const char *zName, const char *zDatabase){
-   return sqlite3FindTable_int(db, zName, zDatabase, 1, 0);
-}
-
-/*
-** See sqlite3FindTable for definition
-** This make sure we don't try to create an unexisting table 
-*/
-Table *sqlite3FindTableCheckOnly(
-  sqlite3 *db,
-  const char *zName,
-  const char *zDatabase
-){
-   return sqlite3FindTable_int(db, zName, zDatabase, 0, 0);
-}
-
-/*
-** Special case sqlite3FindTable, passes down information to sqlglue
-** that we are inside a AnalysisLoad, and a table lock is already in
-** place
-**/
-Table *sqlite3FindTableByAnalysisLoad(
-  sqlite3 *db,
-  const char *zName,
-  const char *zDatabase
-){
-  return sqlite3FindTable_int(db, zName, zDatabase, 1, 1);
-}
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 /*
 ** Locate the in-memory structure that describes a particular database
@@ -688,19 +410,6 @@ Table *sqlite3LocateTable(
     ** CREATE, then check to see if it is the name of an virtual table that
     ** can be an eponymous virtual table. */
     if( pParse->disableVtab==0 ){
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-      {
-        /* comdb2sys_foobar -> comdb2_foobar */
-        const char comdb2sys[] = "comdb2sys_";
-        const size_t len = sizeof(comdb2sys)-1;
-        if( strncasecmp(zName, comdb2sys, len)==0 ){
-          char *tmp = alloca(strlen(zName));
-          strcpy(tmp, "comdb2_");
-          strcat(tmp, zName + len);
-          zName = tmp;
-        }
-      }
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
       Module *pMod = (Module*)sqlite3HashFind(&db->aModule, zName);
       if( pMod==0 && sqlite3_strnicmp(zName, "pragma_", 7)==0 ){
         pMod = sqlite3PragmaVtabRegister(db, zName);
@@ -728,10 +437,6 @@ Table *sqlite3LocateTable(
   return p;
 }
 
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-extern int gbl_allow_user_schema;
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-
 /*
 ** Locate the table identified by *p.
 **
@@ -754,16 +459,6 @@ Table *sqlite3LocateTableItem(
   }else{
     zDb = p->zDatabase;
   }
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-  if( gbl_allow_user_schema ){
-    char tblName[MAXTABLELEN];
-    if (resolveTableName(pParse->db, p, zDb, tblName, sizeof(tblName))) {
-        sqlite3ErrorMsg(pParse, "failed to resolve table name");
-        return 0;
-    }
-    return sqlite3LocateTable(pParse, flags, tblName, zDb);
-  }
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   return sqlite3LocateTable(pParse, flags, p->zName, zDb);
 }
 
@@ -923,41 +618,6 @@ void sqlite3ResetAllSchemasOfConnection(sqlite3 *db){
     sqlite3CollapseDatabaseArray(db);
   }
 }
-
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-/*
-** Erase all schema information from a specific attached db
-** based on name (rather than iDb)
-*/
-void sqlite3ResetOneSchemaByName(sqlite3 *db, const char *zName, const char *zDatabase){
-  int i;
-  int len, len2;
-
-  if (!zName || !zDatabase)
-   return;
-
-  len = sqlite3Strlen30(zDatabase);
-
-  sqlite3BtreeEnterAll(db);
-  for(i=0; i<db->nDb; i++){
-    Db *pDb = &db->aDb[i];
-    if( pDb && pDb->zDbSName){
-
-      len2 =  sqlite3Strlen30(pDb->zDbSName);
-
-      if(len == len2 && strncmp(zDatabase, pDb->zDbSName, len) == 0){
-         /* found the db I am looking for */
-         if(pDb->pSchema ){
-            sqlite3SchemaClearByName(pDb->pSchema, zName);
-         }
-
-         return;
-      }
-    }
-  }
-  sqlite3BtreeLeaveAll(db);
-}
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 /*
 ** This routine is called when a commit occurs.
@@ -1405,11 +1065,9 @@ void sqlite3StartTable(
     }
     if( !OMIT_TEMPDB && isTemp ) iDb = 1;
     zName = sqlite3NameFromToken(db, pName);
-#if !defined(SQLITE_BUILDING_FOR_COMDB2)
     if( IN_RENAME_OBJECT ){
       sqlite3RenameTokenMap(pParse, (void*)zName, pName);
     }
-#endif /* !defined(SQLITE_BUILDING_FOR_COMDB2) */
   }
   pParse->sNameToken = *pName;
   if( zName==0 ) return;
@@ -1450,21 +1108,10 @@ void sqlite3StartTable(
     if( SQLITE_OK!=sqlite3ReadSchema(pParse) ){
       goto begin_table_error;
     }
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-    pTable = sqlite3FindTableCheckOnly(db, zName, zDb);
-#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     pTable = sqlite3FindTable(db, zName, zDb);
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     if( pTable ){
       if( !noErr ){
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-        /* allow calling this multiple times for now in case of sqlite_statN tables */
-        if ( strncmp(zName, "sqlite_stat", 11)!=0 ){
-          sqlite3ErrorMsg(pParse, "table %T already exists", pName);
-        }
-#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
         sqlite3ErrorMsg(pParse, "table %T already exists", pName);
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
       }else{
         assert( !db->init.busy || CORRUPT_DB );
         sqlite3CodeVerifySchema(pParse, iDb);
@@ -1493,10 +1140,6 @@ void sqlite3StartTable(
 #else
   pTable->nRowLogEst = 200; assert( 200==sqlite3LogEst(1048576) );
 #endif
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-  pTable->hasPartIdx = 0;
-  pTable->hasExprIdx = 0;
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   assert( pParse->pNewTable==0 );
   pParse->pNewTable = pTable;
 
@@ -1619,9 +1262,7 @@ void sqlite3AddColumn(Parse *pParse, Token *pName, Token *pType){
   }
   z = sqlite3DbMallocRaw(db, pName->n + pType->n + 2);
   if( z==0 ) return;
-#if !defined(SQLITE_BUILDING_FOR_COMDB2)
   if( IN_RENAME_OBJECT ) sqlite3RenameTokenMap(pParse, (void*)z, pName);
-#endif /* !defined(SQLITE_BUILDING_FOR_COMDB2) */
   memcpy(z, pName->z, pName->n);
   z[pName->n] = 0;
   sqlite3Dequote(z);
@@ -1719,9 +1360,6 @@ void sqlite3AddNotNull(Parse *pParse, int onError){
 ** 'REAL'        | SQLITE_AFF_REAL
 ** 'FLOA'        | SQLITE_AFF_REAL
 ** 'DOUB'        | SQLITE_AFF_REAL
-** 'DATE'        | SQLITE_AFF_DATETIME
-** 'SMAL'        | SQLITE_AFF_SMALL
-** 'DECI'        | SQLITE_AFF_DECIMAL
 **
 ** If none of the substrings in the above table are found,
 ** SQLITE_AFF_NUMERIC is returned.
@@ -1753,68 +1391,13 @@ char sqlite3AffinityType(const char *zIn, Column *pCol){
     }else if( h==(('f'<<24)+('l'<<16)+('o'<<8)+'a')          /* FLOA */
         && aff==SQLITE_AFF_NUMERIC ){
       aff = SQLITE_AFF_REAL;
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-    }else if( h==(('s'<<24)+('m'<<16)+('a'<<8)+'l')          /* SMAL */
-        && aff==SQLITE_AFF_NUMERIC ){
-      aff = SQLITE_AFF_SMALL;
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     }else if( h==(('d'<<24)+('o'<<16)+('u'<<8)+'b')          /* DOUB */
         && aff==SQLITE_AFF_NUMERIC ){
       aff = SQLITE_AFF_REAL;
 #endif
     }else if( (h&0x00FFFFFF)==(('i'<<16)+('n'<<8)+'t') ){    /* INT */
       aff = SQLITE_AFF_INTEGER;
-#if !defined(SQLITE_BUILDING_FOR_COMDB2)
-      /* COMDB2: No "break", "INT" COLLIDES WITH "INTERVAL", 10252007dh */
       break;
-#endif /* !defined(SQLITE_BUILDING_FOR_COMDB2) */
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-    }else if( h==(('d'<<24)+('a'<<16)+('t'<<8)+'e')          /* DATE */
-        && aff==SQLITE_AFF_NUMERIC ){
-      aff = SQLITE_AFF_DATETIME;
-    }else if( h ==(('y'<<24) + ('e'<<16)+('a'<<8)+'r')       /* year,
-                                                              * aka
-                                                              * interval
-                                                              * year */
-        && (aff==SQLITE_AFF_NUMERIC || aff==SQLITE_AFF_INTEGER) ){
-      aff = SQLITE_AFF_INTV_YE;
-    }else if( h ==(('o'<<24) + ('n'<<16)+('t'<<8)+'h')       /* onth,
-                                                              * aka
-                                                              * interval
-                                                              * month */
-        && (aff==SQLITE_AFF_NUMERIC || aff==SQLITE_AFF_INTEGER) ){
-      aff = SQLITE_AFF_INTV_MO;
-    }else if( (h&0x00FFFFFF) ==(('d'<<16)+('a'<<8)+'y')      /* day,
-                                                              * aka
-                                                              * interval
-                                                              * day */
-        && (aff==SQLITE_AFF_NUMERIC || aff==SQLITE_AFF_INTEGER) ){
-      aff = SQLITE_AFF_INTV_DY;
-    }else if( h ==(('h'<<24) + ('o'<<16)+('u'<<8)+'r')       /* hour,
-                                                              * aka
-                                                              * interval
-                                                              * hour */
-        && (aff==SQLITE_AFF_NUMERIC || aff==SQLITE_AFF_INTEGER) ){
-      aff = SQLITE_AFF_INTV_HO;
-    }else if( (h&0x00FFFFFF) ==(('m'<<16)+('i'<<8)+'n')      /* min,
-                                                              * aka
-                                                              * interval
-                                                              * min */
-        && (aff==SQLITE_AFF_NUMERIC || aff==SQLITE_AFF_INTEGER) ){
-      aff = SQLITE_AFF_INTV_MI;
-    }else if( (h&0x00FFFFFF) ==(('s'<<16)+('e'<<8)+'c')      /* sec,
-                                                              * aka
-                                                              * interval
-                                                              * sec */
-        &&(aff==SQLITE_AFF_NUMERIC || aff==SQLITE_AFF_INTEGER) ){
-      aff = SQLITE_AFF_INTV_SE;
-    }else if( h ==(('d'<<24) + ('e'<<16)+('c'<<8)+'i')       /* year,
-                                                              * aka
-                                                              * interval
-                                                              * year */
-        && aff==SQLITE_AFF_NUMERIC ){
-      aff = SQLITE_AFF_DECIMAL;
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     }
   }
 
@@ -1895,11 +1478,9 @@ void sqlite3AddDefaultValue(
       sqlite3DbFree(db, x.u.zToken);
     }
   }
-#if !defined(SQLITE_BUILDING_FOR_COMDB2)
   if( IN_RENAME_OBJECT ){
     sqlite3RenameExprUnmap(pParse, pExpr);
   }
-#endif /* !defined(SQLITE_BUILDING_FOR_COMDB2) */
   sqlite3ExprDelete(db, pExpr);
 }
 
@@ -2006,12 +1587,10 @@ void sqlite3AddPrimaryKey(
    && sqlite3StrICmp(sqlite3ColumnType(pCol,""), "INTEGER")==0
    && sortOrder!=SQLITE_SO_DESC
   ){
-#if !defined(SQLITE_BUILDING_FOR_COMDB2)
     if( IN_RENAME_OBJECT && pList ){
       Expr *pCExpr = sqlite3ExprSkipCollate(pList->a[0].pExpr);
       sqlite3RenameTokenRemap(pParse, &pTab->iPKey, pCExpr);
     }
-#endif /* !defined(SQLITE_BUILDING_FOR_COMDB2) */
     pTab->iPKey = iCol;
     pTab->keyConf = (u8)onError;
     assert( autoInc==0 || autoInc==1 );
@@ -2263,25 +1842,9 @@ static char *createTableStmt(sqlite3 *db, Table *p){
     static const char * const azType[] = {
         /* SQLITE_AFF_BLOB    */ "",
         /* SQLITE_AFF_TEXT    */ " TEXT",
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-        /* SQLITE_AFF_DATETIME */ " DATETIME",
-        /* SQLITE_AFF_INTV_YE */ " YEAR ",
-        /* SQLITE_AFF_INTV_MO */ " MONTH ",
-        /* SQLITE_AFF_INTV_DY */ " DAY ",
-        /* SQLITE_AFF_INTV_HO */ " HOUR ",
-        /* SQLITE_AFF_INTV_MI */ " MIN ",
-        /* SQLITE_AFF_INTV_SE */ " SEC ",
-        /* SQLITE_AFF_NUMERIC */ " NUM ",
-        /* SQLITE_AFF_INTEGER */ " INT ",
-        /* SQLITE_AFF_REAL    */ " REAL ",
-        /* SQLITE_AFF_DECIMAL */ " DEC ",
-        /* SQLITE_AFF_SMALL   */ " SMALL ",
-        /* SQLITE_AFF_SMALL   */ " DATETIMEUS "
-#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
         /* SQLITE_AFF_NUMERIC */ " NUM",
         /* SQLITE_AFF_INTEGER */ " INT",
         /* SQLITE_AFF_REAL    */ " REAL"
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     };
     int len;
     const char *zType;
@@ -2508,11 +2071,9 @@ static void convertToWithoutRowidTable(Parse *pParse, Table *pTab){
     pList = sqlite3ExprListAppend(pParse, 0, 
                   sqlite3ExprAlloc(db, TK_ID, &ipkToken, 0));
     if( pList==0 ) return;
-#if !defined(SQLITE_BUILDING_FOR_COMDB2)
     if( IN_RENAME_OBJECT ){
       sqlite3RenameTokenRemap(pParse, pList->a[0].pExpr, &pTab->iPKey);
     }
-#endif /* !defined(SQLITE_BUILDING_FOR_COMDB2) */
     pList->a[0].sortFlags = pParse->iPkSortOrder;
     assert( pParse->pNewTable==pTab );
     pTab->iPKey = -1;
@@ -2769,14 +2330,6 @@ void sqlite3EndTable(
   }
   iDb = sqlite3SchemaToIndex(db, p->pSchema);
 
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-  /* we know here which iDb the object needs to go; I can set my
-  ** Table->iDb here This fixes an issue with sqlite_stat* objects
-  ** that were inserted together with the initial table; it is too
-  ** late to do that in comdb2_dynamic_attach for foreign tables
-  */
-  p->iDb = iDb;
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 #ifndef SQLITE_OMIT_CHECK
   /* Resolve names in all CHECK constraint expressions.
   */
@@ -2930,49 +2483,12 @@ void sqlite3EndTable(
       zStmt = sqlite3MPrintf(db, 
           "CREATE %s %.*s", zType2, n, pParse->sNameToken.z
       );
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-      if (p->pSelect && db->isTimepartView == 0 && iDb != 1) {
-        comdb2_create_view(pParse, pParse->sNameToken.z, pParse->sNameToken.n,
-                           zStmt, 0);
-      }
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     }
 
     /* A slot for the record has already been allocated in the 
     ** schema table.  We just need to update that slot with all
     ** the information we've collected.
     */
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-    if( iDb==1 ){
-      /* temp tables have no csc2 */
-      sqlite3NestedParse(pParse,
-       "UPDATE %Q." DFLT_SCHEMA_TABLE
-       " SET type='%s', name=%Q, tbl_name=%Q, rootpage=#%d, sql=%Q"
-       " WHERE rowid=#%d",
-       db->aDb[iDb].zDbSName,
-       zType,
-       p->zName,
-       p->zName,
-       pParse->regRoot,
-       zStmt,
-       pParse->regRowid
-      );
-    }else{
-      /* Add csc2 for comdb2 */
-      sqlite3NestedParse(pParse,
-       "UPDATE %Q." DFLT_SCHEMA_TABLE
-       " SET type='%s', name=%Q, tbl_name=%Q, rootpage=#%d, sql=%Q, csc2=NULL"
-       " WHERE rowid=#%d",
-       db->aDb[iDb].zDbSName,
-       zType,
-       p->zName,
-       p->zName,
-       pParse->regRoot,
-       zStmt,
-       pParse->regRowid
-      );
-    }
-#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     sqlite3NestedParse(pParse,
       "UPDATE %Q." DFLT_SCHEMA_TABLE
       " SET type='%s', name=%Q, tbl_name=%Q, rootpage=#%d, sql=%Q"
@@ -2985,7 +2501,6 @@ void sqlite3EndTable(
       zStmt,
       pParse->regRowid
     );
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     sqlite3DbFree(db, zStmt);
     sqlite3ChangeCookie(pParse, iDb);
 
@@ -3111,11 +2626,9 @@ void sqlite3CreateView(
 
 create_view_fail:
   sqlite3SelectDelete(db, pSelect);
-#if !defined(SQLITE_BUILDING_FOR_COMDB2)
   if( IN_RENAME_OBJECT ){
     sqlite3RenameExprlistUnmap(pParse, pCNames);
   }
-#endif /* !defined(SQLITE_BUILDING_FOR_COMDB2) */
   sqlite3ExprListDelete(db, pCNames);
   return;
 }
@@ -3194,11 +2707,7 @@ int sqlite3ViewGetColumnNames(Parse *pParse, Table *pTable){
     pParse->eParseMode = PARSE_MODE_NORMAL;
 #endif
     n = pParse->nTab;
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-    sqlite3SrcListAssignCursors(pParse, pSel->pSrc, 0);
-#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     sqlite3SrcListAssignCursors(pParse, pSel->pSrc);
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     pTable->nCol = -1;
     DisableLookaside;
 #ifndef SQLITE_OMIT_AUTHORIZATION
@@ -3542,11 +3051,7 @@ void sqlite3DropTable(Parse *pParse, SrcList *pName, int isView, int noErr){
   Vdbe *v;
   sqlite3 *db = pParse->db;
   int iDb;
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-  int bDropTable = 0;
 
-  comdb2WriteTransaction(pParse);
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   if( db->mallocFailed ){
     goto exit_drop_table;
   }
@@ -3595,9 +3100,6 @@ void sqlite3DropTable(Parse *pParse, SrcList *pName, int isView, int noErr){
       if( !OMIT_TEMPDB && iDb==1 ){
         code = SQLITE_DROP_TEMP_TABLE;
       }else{
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-        bDropTable = 1;
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
         code = SQLITE_DROP_TABLE;
       }
     }
@@ -3633,27 +3135,12 @@ void sqlite3DropTable(Parse *pParse, SrcList *pName, int isView, int noErr){
   */
   v = sqlite3GetVdbe(pParse);
   if( v ){
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-    if( isView && db->isTimepartView==0 ){
-      comdb2_drop_view(pParse, pName);
-    }else if( isView || (iDb==1 && !bDropTable) ){
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     sqlite3BeginWriteOperation(pParse, 1, iDb);
     if( !isView ){
       sqlite3ClearStatTables(pParse, iDb, "tbl", pTab->zName);
       sqlite3FkDropTable(pParse, pName, pTab);
     }
     sqlite3CodeDropTable(pParse, pTab, iDb, isView);
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-    }else{
-      if( pName->nSrc<1 ){
-        pParse->rc = SQLITE_ERROR;
-        sqlite3ErrorMsg(pParse, "Comdb2 can only drop one table at a time");
-      }else{
-        comdb2DropTable(pParse, pName);
-      }
-    }
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   }
 
 exit_drop_table:
@@ -3727,11 +3214,9 @@ void sqlite3CreateForeignKey(
   pFKey->pNextFrom = p->pFKey;
   z = (char*)&pFKey->aCol[nCol];
   pFKey->zTo = z;
-#if !defined(SQLITE_BUILDING_FOR_COMDB2)
   if( IN_RENAME_OBJECT ){
     sqlite3RenameTokenMap(pParse, (void*)z, pTo);
   }
-#endif /* !defined(SQLITE_BUILDING_FOR_COMDB2) */
   memcpy(z, pTo->z, pTo->n);
   z[pTo->n] = 0;
   sqlite3Dequote(z);
@@ -3754,22 +3239,18 @@ void sqlite3CreateForeignKey(
           pFromCol->a[i].zEName);
         goto fk_end;
       }
-#if !defined(SQLITE_BUILDING_FOR_COMDB2)
       if( IN_RENAME_OBJECT ){
         sqlite3RenameTokenRemap(pParse, &pFKey->aCol[i], pFromCol->a[i].zEName);
       }
-#endif /* !defined(SQLITE_BUILDING_FOR_COMDB2) */
     }
   }
   if( pToCol ){
     for(i=0; i<nCol; i++){
       int n = sqlite3Strlen30(pToCol->a[i].zEName);
       pFKey->aCol[i].zCol = z;
-#if !defined(SQLITE_BUILDING_FOR_COMDB2)
       if( IN_RENAME_OBJECT ){
         sqlite3RenameTokenRemap(pParse, z, pToCol->a[i].zEName);
       }
-#endif /* !defined(SQLITE_BUILDING_FOR_COMDB2) */
       memcpy(z, pToCol->a[i].zEName, n);
       z[n] = 0;
       z += n+1;
@@ -3988,9 +3469,6 @@ int sqlite3HasExplicitNulls(Parse *pParse, ExprList *pList){
   return 0;
 }
 
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-int is_comdb2_index_expression(const char *dbname);
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 /*
 ** Create a new index for an SQL table.  pName1.pName2 is the name of the index 
 ** and pTblList is the name of the table that is to be indexed.  Both will 
@@ -4248,9 +3726,6 @@ void sqlite3CreateIndex(
   if( pPIWhere ){
     sqlite3ResolveSelfReference(pParse, pTab, NC_PartIdx, pPIWhere, 0);
     pIndex->pPartIdxWhere = pPIWhere;
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-    pIndex->pTable->hasPartIdx = 1;
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     pPIWhere = 0;
   }
   assert( sqlite3SchemaMutexHeld(db, iDb, 0) );
@@ -4299,9 +3774,6 @@ void sqlite3CreateIndex(
       j = XN_EXPR;
       pIndex->aiColumn[i] = XN_EXPR;
       pIndex->uniqNotNull = 0;
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-      pTab->hasExprIdx = 1;
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     }else{
       j = pCExpr->iColumn;
       assert( j<=0x7fff );
@@ -4339,9 +3811,6 @@ void sqlite3CreateIndex(
     pIndex->aSortOrder[i] = (u8)requestedSortOrder;
   }
 
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-  if (is_comdb2_index_expression(pTab->zName)) pTab->hasExprIdx = 1;
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   /* Append the table key to the end of the index.  For WITHOUT ROWID
   ** tables (when pPk!=0) this will be the declared PRIMARY KEY.  For
   ** normal tables (when pPk==0) this will be the rowid.
@@ -4468,18 +3937,6 @@ void sqlite3CreateIndex(
           goto exit_create_index;
         }
       }
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-      /* remote indexes don't use skip-scan indexes */
-      if( db->init.iDb>1 ){
-        extern int gbl_fdb_track;
-        if (gbl_fdb_track)
-          logmsg(LOGMSG_DEBUG, "XXX: no skip-scan for remote index %s:%s\n", 
-                 pIndex->pTable->zName, pIndex->zName);
-        pIndex->noSkipScan  = 1;
-      }else{
-        pIndex->noSkipScan = 0;
-      }
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
       p = sqlite3HashInsert(&pIndex->pSchema->idxHash, 
           pIndex->zName, pIndex);
       if( p ){
@@ -4541,11 +3998,7 @@ void sqlite3CreateIndex(
       /* Add an entry in sqlite_schema for this index
       */
       sqlite3NestedParse(pParse, 
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-          "INSERT INTO %Q." DFLT_SCHEMA_TABLE " VALUES('index',%Q,%Q,#%d,%Q,NULL);",
-#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
           "INSERT INTO %Q." DFLT_SCHEMA_TABLE " VALUES('index',%Q,%Q,#%d,%Q);",
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
           db->aDb[iDb].zDbSName,
           pIndex->zName,
           pTab->zName,
@@ -4658,15 +4111,7 @@ void sqlite3DefaultRowEst(Index *pIdx){
   }
 
   assert( 0==sqlite3LogEst(1) );
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-  /* AZ: allow unique indexes to have cost of 1 */
-  if( IsUniqueIndex(pIdx) ||
-      is_comdb2_index_unique(pIdx->pTable->zName, pIdx->zName)){
-    a[pIdx->nKeyCol] = 0;
-  }
-#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   if( IsUniqueIndex(pIdx) ) a[pIdx->nKeyCol] = 0;
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 }
 
 /*
@@ -4679,9 +4124,6 @@ void sqlite3DropIndex(Parse *pParse, SrcList *pName, int ifExists){
   sqlite3 *db = pParse->db;
   int iDb;
 
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-  comdb2WriteTransaction(pParse);
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   assert( pParse->nErr==0 );   /* Never called with prior errors */
   if( db->mallocFailed ){
     goto exit_drop_index;
@@ -4806,11 +4248,9 @@ IdList *sqlite3IdListAppend(Parse *pParse, IdList *pList, Token *pToken){
     return 0;
   }
   pList->a[i].zName = sqlite3NameFromToken(db, pToken);
-#if !defined(SQLITE_BUILDING_FOR_COMDB2)
   if( IN_RENAME_OBJECT && pList->a[i].zName ){
     sqlite3RenameTokenMap(pParse, (void*)pList->a[i].zName, pToken);
   }
-#endif /* !defined(SQLITE_BUILDING_FOR_COMDB2) */
   return pList;
 }
 
@@ -5006,11 +4446,7 @@ SrcList *sqlite3SrcListAppend(
 /*
 ** Assign VdbeCursor index numbers to all tables in a SrcList
 */
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-void sqlite3SrcListAssignCursors(Parse *pParse, SrcList *pList, int is_recording){
-#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 void sqlite3SrcListAssignCursors(Parse *pParse, SrcList *pList){
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   int i;
   struct SrcList_item *pItem;
   assert(pList || pParse->db->mallocFailed );
@@ -5018,26 +4454,8 @@ void sqlite3SrcListAssignCursors(Parse *pParse, SrcList *pList){
     for(i=0, pItem=pList->a; i<pList->nSrc; i++, pItem++){
       if( pItem->iCursor>=0 ) break;
       pItem->iCursor = pParse->nTab++;
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-      /* for now, as a quick fix so we don't crash */
-      if (pItem->iCursor < (MAX_CURSOR_IDS/sizeof(int))) {
-        if( is_recording ){
-          Vdbe *v = sqlite3GetVdbe(pParse);
-          comdb2SetRecording(v);
-          SET_CURSOR_RECORDING(pParse, pItem->iCursor);
-        }else{
-          CLR_CURSOR_RECORDING(pParse, pItem->iCursor);
-        }
-      }
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
       if( pItem->pSelect ){
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-        sqlite3SrcListAssignCursors(pParse, pItem->pSelect->pSrc,
-            is_recording ||
-            pItem->pSelect->recording);
-#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
         sqlite3SrcListAssignCursors(pParse, pItem->pSelect->pSrc);
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
       }
     }
   }
@@ -5106,12 +4524,10 @@ SrcList *sqlite3SrcListAppendFromTerm(
   pItem = &p->a[p->nSrc-1];
   assert( (pTable==0)==(pDatabase==0) );
   assert( pItem->zName==0 || pDatabase!=0 );
-#if !defined(SQLITE_BUILDING_FOR_COMDB2)
   if( IN_RENAME_OBJECT && pItem->zName ){
     Token *pToken = (ALWAYS(pDatabase) && pDatabase->z) ? pDatabase : pTable;
     sqlite3RenameTokenMap(pParse, pItem->zName, pToken);
   }
-#endif /* !defined(SQLITE_BUILDING_FOR_COMDB2) */
   assert( pAlias!=0 );
   if( pAlias->n ){
     pItem->zAlias = sqlite3NameFromToken(db, pAlias);
@@ -5178,11 +4594,7 @@ SrcList *sqlite3SrcListAppendList(Parse *pParse, SrcList *p1, SrcList *p2){
 ** table-valued-function.
 */
 void sqlite3SrcListFuncArgs(Parse *pParse, SrcList *p, ExprList *pList){
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-  if( p && pList ){
-#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   if( p ){
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     struct SrcList_item *pItem = &p->a[p->nSrc-1];
     assert( pItem->fg.notIndexed==0 );
     assert( pItem->fg.isIndexedBy==0 );
@@ -5552,44 +4964,6 @@ static void reindexDatabases(Parse *pParse, char const *zColl){
 }
 #endif
 
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-/*
-** We delete the views that fail the provided predicate
-** Used to remove deleted partitions.
-*/
-int sqlite3PredicatedClearViews(
-  sqlite3 *db, 
-  int (*predicated_delete)(const char *name, sqlite3 *db, void *arg),
-  void *arg
-){
-  Db       *pDb = &db->aDb[0]; /* main*/
-  Table    *pTab;
-  HashElem *k;
-
-restart:
-  for( k=sqliteHashFirst(&pDb->pSchema->tblHash);  k; k=sqliteHashNext(k) ){
-    pTab = (Table*)sqliteHashData(k);
-    if( pTab->pSelect ){  
-      /* Ignore 'user' views */
-      if ((get_view_by_name(pTab->zName))) {
-        continue;
-      }
-
-      /* This is a time partition view */
-      if( (*predicated_delete)(pTab->zName, db, arg) ){
-
-        /* NOTE: we need to delete also the trigggers, and that require 
-        comdb2 knowledge; have comdb2 properly delete them instead
-        of hacking here delete straight in tblHash*/
-
-        goto restart;
-      }
-    }
-  }
-  return SQLITE_OK;
-}
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-
 /*
 ** Generate code for the REINDEX command.
 **
@@ -5771,348 +5145,4 @@ void sqlite3WithDelete(sqlite3 *db, With *pWith){
     sqlite3DbFree(db, pWith);
   }
 }
-
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-#include "vdbeInt.h"
-static char *getIndexCond(
-  sqlite3 *db,
-  const char *left,
-  const char *op,
-  Mem *m,
-  int leftIsCol
-){
-  char *right = NULL;
-  char *ret;
-  char *hex = "0123456789ABCDEF";
-
-  u32   flgs = m->flags;
-
-  /* remove MEM_Static */
-  flgs &= MEM_TypeMask;
-
-  if( flgs == MEM_Int ){
-    right = sqlite3_mprintf("%lld", m->u.i);
-  }else if( flgs == MEM_IntReal ){
-    right = sqlite3_mprintf("%lld", m->u.i);
-  }else if( flgs == MEM_Real ){
-    right = sqlite3_mprintf("%lf", m->u.r);
-  }else if( flgs & MEM_Str ){
-    right = sqlite3_mprintf("'%.*q'", m->n, m->z);
-  }else if( flgs & MEM_Blob ){
-    char * key = alloca(2*m->n+1);
-    int  i;
-
-    for(i=0;i<m->n;i++){
-      key[2*i] = hex[((unsigned char)m->z[i])/16];
-      key[2*i+1] = hex[((unsigned char)m->z[i])%16];
-    }
-    key[2*m->n] = '\0';
-
-    right = sqlite3_mprintf("x'%q'", key);
-  }else if( flgs & MEM_Datetime ){
-    right = sqlite3_mprintf("cast(%llu.%.*u as datetime)",
-                 m->du.dt.dttz_sec, m->du.dt.dttz_prec, m->du.dt.dttz_frac);
-  }else if( flgs & MEM_Interval ){
-    if (m->du.tv.type == INTV_YM_TYPE){
-      right = sqlite3_mprintf("cast('%s%u-%2.2u' as intervalym)",
-               (m->du.tv.sign==-1)?"- ":"",
-               m->du.tv.u.ym.years, m->du.tv.u.ym.months);
-    }else if( m->du.tv.type == INTV_DS_TYPE ){
-      right = sqlite3_mprintf("cast('%s%u %2.2u:%2.2u:%2.2u.%3.3u' "
-              "as intervalds)" ,
-               (m->du.tv.sign==-1)?"- ":"",
-               m->du.tv.u.ds.days,
-               m->du.tv.u.ds.hours, m->du.tv.u.ds.mins,
-               m->du.tv.u.ds.sec, m->du.tv.u.ds.frac);
-    }else if( m->du.tv.type == INTV_DSUS_TYPE ){
-      right = sqlite3_mprintf("cast('%s%u %2.2u:%2.2u:%2.2u.%6.6u' "
-               "as intervaldsus)" ,
-               (m->du.tv.sign==-1)?"- ":"",
-               m->du.tv.u.ds.days,
-               m->du.tv.u.ds.hours, m->du.tv.u.ds.mins,
-               m->du.tv.u.ds.sec, m->du.tv.u.ds.frac);
-    }else if( m->du.tv.type == INTV_DECIMAL_TYPE ){
-      /* max string is like 43 letters */
-      char tmp[64];
-
-      if( sqlite3DecimalToString( &m->du.tv.u.dec, tmp, sizeof(tmp)) ){
-        logmsg(LOGMSG_ERROR, "%s:%d failed to convert decimal to string\n",
-               __FILE__, __LINE__);
-        return NULL;
-      }
-
-      right = sqlite3_mprintf("cast('%q' as decimal)", tmp);
-    }
-  }else if( flgs == MEM_Null ){
-    right = sqlite3_mprintf("NULL");
-    if( op[0] == '>' && op[1] == '\0' /*OP_SeekGT*/ ){
-      op = "IS NOT";
-    }else{
-      op = "IS";
-    }
-  }
-
-  if( !right ){
-    abort();
-  }
-
-  if( leftIsCol ){
-    ret = sqlite3_mprintf("\"%w\" %s (%s)", left, op, right);
-  }else {
-    ret = sqlite3_mprintf("(%s) %s (%s)", left, op, right);
-  }
-  sqlite3_free(right);
-
-  return ret;
-}
-
-char *sqlite3DescribeIndexOrder(
-  sqlite3 *db, 
-  const char *zName,
-  const char *zDb, 
-  Mem *m,
-  int nfields,
-  int *hasCondition,
-  char **columns,
-  int op,
-  int is_equality,
-  unsigned long long colMask)
-{
-  Table          *pTbl;
-  Index          *pIdx;
-  int            i;
-  char           *colName = NULL;
-  char           *ret, *ret2;
-  char           *pDesc;
-  char           *pOperLast = NULL;
-  char           *retCond = NULL, *retCond2, *retCond3;
-  int            done_key;
-  char           *ret_cols, *ret_cols2;
-  int            isMovingLeft = 0;
-  char           *pExprDesc = NULL;
-  int            isExpr = 0;
-
-  pIdx = sqlite3FindIndex(db, zName, zDb);
-  if( !pIdx ){
-    return NULL;
-  }
-
-  switch( op ){
-    case OP_IfNoHope:
-    case OP_Found:
-    case OP_NotFound: {
-      isMovingLeft = 0; 
-      pOperLast = "=";
-      break;
-    }
-    case OP_SeekGE: {
-      isMovingLeft = 0;
-      if (is_equality)
-        pOperLast = "=";
-      else
-        pOperLast = 
-          (pIdx->aSortOrder[nfields-1] == 0)?
-          ">="
-          :"<=";
-      break;
-    }
-    case OP_Next: {
-      isMovingLeft = 0;
-      pOperLast = 
-        (pIdx->aSortOrder[nfields-1] == 0)?
-        ">=":
-        "<=";
-      break;
-    }
-    case OP_SeekGT: {
-      isMovingLeft = 0;
-      pOperLast =
-        (pIdx->aSortOrder[nfields-1] == 0)?
-        ">"
-        :"<";
-      break;
-    }
-    case OP_SeekLE: {
-      isMovingLeft = 1;
-      if (is_equality)
-        pOperLast = "=";
-      else
-        pOperLast =
-          (pIdx->aSortOrder[nfields-1] == 0)?
-          "<="
-          :">=";
-      break;
-    }
-    case OP_Prev: {
-      isMovingLeft = 1;
-      pOperLast =
-        (pIdx->aSortOrder[nfields-1] == 0)?
-        "<="
-        :">=";
-      break;
-    }
-    case OP_SeekLT: {
-      isMovingLeft = 1;
-      pOperLast = 
-        (pIdx->aSortOrder[nfields-1] == 0)?
-        "<"
-        :">";
-      break;
-    }
-    default:
-        logmsg(LOGMSG_ERROR, "Unknown opcode, upgraded sqlite? op %d\n", op);
-        abort();
-  }
-
-  pTbl = pIdx->pTable;
-
-  pDesc = (isMovingLeft)?
-      ((pIdx->aSortOrder[0])?"":" DESC"):
-      ((pIdx->aSortOrder[0])?" DESC":"");
-
-  if( pIdx->aiColumn[0] == XN_EXPR ){
-     pExprDesc = sqlite3ExprDescribe(db->pVdbe, pIdx->aColExpr->a[0].pExpr);
-     if( pExprDesc == NULL ){
-         return NULL;
-     }
-     isExpr = 1;
-  }
-  if( isExpr ){
-    ret = sqlite3_mprintf("(%s) %s", pExprDesc, pDesc);
-  }else{
-    ret = sqlite3_mprintf("\"%w\" %s",
-                          pTbl->aCol[pIdx->aiColumn[0]].zName, pDesc);
-  }
-  if( (colMask & (1ULL<<63)) || (colMask&1ULL) || isExpr ){
-    if( isExpr ){
-      ret_cols = sqlite3_mprintf("(%s)", pExprDesc);
-    }else{
-      ret_cols = sqlite3_mprintf("\"%w\"",
-                                 pTbl->aCol[pIdx->aiColumn[0]].zName);
-    }
-  }else{
-    ret_cols = sqlite3_mprintf("NULL");  /* default for no columns */
-  }
-
-
-  if( m && nfields ){
-    retCond = getIndexCond(db, isExpr ? pExprDesc :
-                           pTbl->aCol[pIdx->aiColumn[0]].zName,
-                           (nfields==1) ? pOperLast : "=", m,
-                           !isExpr);
-    *hasCondition = 1;
-  }else{
-    *hasCondition = 0;
-  }
-
-  done_key = 0;
-  if( isExpr ){
-    sqlite3_free(pExprDesc);
-    pExprDesc = NULL;
-    isExpr = 0;
-  }
-  /* stop at collation DATACOPY */
-  for(i=1; i< pIdx->nKeyCol; i++){
-    if( strncasecmp(pIdx->azColl[i], "DATACOPY", 8) == 0 ){
-      done_key = 1;
-    }
-
-    if( pIdx->aiColumn[i] == XN_EXPR ){
-      pExprDesc = sqlite3ExprDescribe(db->pVdbe, pIdx->aColExpr->a[i].pExpr);
-      isExpr = 1;
-    }else
-      colName = pTbl->aCol[pIdx->aiColumn[i]].zName;
-
-    if( !done_key ){
-      pDesc = (isMovingLeft)?
-	((pIdx->aSortOrder[i])?"":" DESC"):
-	((pIdx->aSortOrder[i])?" DESC":"");
-
-      if( isExpr ){
-        ret2 = sqlite3_mprintf("%s, (%s) %s", ret, pExprDesc, pDesc);
-      }else{
-        ret2 = sqlite3_mprintf("%s, \"%w\" %s", ret, colName, pDesc);
-      }
-
-      sqlite3_free(ret);
-      ret = ret2;
-    }
-    /* should I include the column? - check if request is NOT rowid
-    ** only, if filter is NOT disabled && if the field bit is set
-    */
-    if( (colMask & (1ULL<<63)) || ((i<64) && (colMask&(1ULL<<i))) || isExpr ){
-      if( isExpr ){
-        ret_cols2 = sqlite3_mprintf("%s, (%s)", ret_cols, pExprDesc);
-      }else{
-        ret_cols2 = sqlite3_mprintf("%s, \"%w\"", ret_cols, colName);
-      }
-    }else{
-      ret_cols2 = sqlite3_mprintf("%s, NULL", ret_cols);
-    }
-    sqlite3_free(ret_cols);
-    ret_cols = ret_cols2;
-
-    if( !done_key ){
-      if( (*hasCondition) && i < nfields ){
-        retCond2 = getIndexCond(db, isExpr ? pExprDesc : colName,
-                                (i==(nfields-1)) ? pOperLast : "=",
-                                &m[i], !isExpr);
-
-        retCond3 = sqlite3_mprintf("%s AND %s", retCond, retCond2);
-
-        sqlite3_free(retCond);
-        sqlite3_free(retCond2);
-
-        retCond = retCond3;
-
-        /*fprintf(stderr, "\"%s\" has condition \"%s\"\n",
-            isExpr?pExprDesc:colName, retCond);*/
-      }
-
-      /*fprintf(stderr, "\"%s\" -> \"%s\"\n", isExpr?pExprDesc:colName, ret);*/
-    }
-    if( isExpr ){
-       sqlite3_free(pExprDesc);
-       pExprDesc = NULL;
-       isExpr = 0;
-    }
-
-  }
-
-  if( *hasCondition ){
-    /* index probes */
-    if( op == OP_Found || op == OP_NotFound ){
-      ret2 = sqlite3_mprintf(" %s ORDER BY %s LIMIT 1", retCond, ret);
-      sqlite3_free(retCond);
-    }else{
-      ret2 = sqlite3_mprintf(" %s ORDER BY %s", retCond, ret);
-      sqlite3_free(retCond);
-    }
-  }else{
-    ret2 = sqlite3_mprintf(" ORDER BY %s", ret);
-  }
-
-  sqlite3_free(ret);
-
-  *columns = ret_cols;
-   
-  return ret2;
-}
-
-/*
-** Reset the schema for all remote dbs from an engine.
-*/
-void sqlite3ResetFdbSchemas(sqlite3 *db){
-  int i;
-
-  sqlite3_mutex_enter(sqlite3_db_mutex(db));
-
-  for( i=2; i<db->nDb; i++ ){
-    comdb2_dynamic_detach(db, i);
-  }
-
-  sqlite3_mutex_leave(sqlite3_db_mutex(db));
-}
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-
 #endif /* !defined(SQLITE_OMIT_CTE) */
