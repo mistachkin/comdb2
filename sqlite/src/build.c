@@ -463,7 +463,7 @@ retry_after_fdb_creation:
         i = 0;
       }else{
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-        goto done;
+        goto maybe_remote;
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
         return 0;
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
@@ -490,14 +490,14 @@ retry_after_fdb_creation:
     /* Match against TEMP first */
     p = sqlite3HashFind(&db->aDb[1].pSchema->tblHash, zName);
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-    if( p ) goto found;
+    if( p ) goto maybe_remote;
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     if( p ) return p;
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     /* The main database is second */
     p = sqlite3HashFind(&db->aDb[0].pSchema->tblHash, zName);
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-    if( p ) goto found;
+    if( p ) goto maybe_remote;
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     if( p ) return p;
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
@@ -524,7 +524,7 @@ retry_after_fdb_creation:
   ** has no database name to prevent using prepopulated sqlite
   ** engines with wrong queries; this introduce random syntax errors
   */
-found:
+maybe_remote:
   if( i>1 && p && !zDatabase ){
     p = 0;
     goto done;
