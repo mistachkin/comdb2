@@ -2772,7 +2772,7 @@ struct Expr {
                          ** TK_COLUMN: the value of p5 for OP_Column
                          ** TK_AGG_FUNCTION: nesting depth
                          ** TK_FUNCTION: NC_SelfRef flag if needs OP_PureFunc */
-#ifdef SQLITE_DEBUG
+#if defined(SQLITE_BUILDING_FOR_COMDB2) || defined(SQLITE_DEBUG)
   u8 vvaFlags;           /* Verification flags. */
 #endif
   u32 flags;             /* Various flags.  EP_* See below */
