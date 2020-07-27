@@ -2947,8 +2947,8 @@ void sqlite3EndTable(
       /* temp tables have no csc2 */
       sqlite3NestedParse(pParse,
        "UPDATE %Q." DFLT_SCHEMA_TABLE
-       "SET type='%s', name=%Q, tbl_name=%Q, rootpage=#%d, sql=%Q "
-       "WHERE rowid=#%d",
+       " SET type='%s', name=%Q, tbl_name=%Q, rootpage=#%d, sql=%Q"
+       " WHERE rowid=#%d",
        db->aDb[iDb].zDbSName,
        zType,
        p->zName,
@@ -2961,8 +2961,8 @@ void sqlite3EndTable(
       /* Add csc2 for comdb2 */
       sqlite3NestedParse(pParse,
        "UPDATE %Q." DFLT_SCHEMA_TABLE
-       "SET type='%s', name=%Q, tbl_name=%Q, rootpage=#%d, sql=%Q, csc2=NULL "
-       "WHERE rowid=#%d",
+       " SET type='%s', name=%Q, tbl_name=%Q, rootpage=#%d, sql=%Q, csc2=NULL"
+       " WHERE rowid=#%d",
        db->aDb[iDb].zDbSName,
        zType,
        p->zName,
