@@ -726,20 +726,6 @@ void get_one_explain_line(sqlite3 *hndl, strbuf *out, Vdbe *v, int indent,
         strbuf_appendf(out, "Jump to %d if cursor [%d] is not open. ",
                        op->p2, op->p1);
         break;
-    case OP_FinishSeek:
-        strbuf_appendf(out, "If cursor [%d] was previously moved via "
-                       "a deferred seek, complete that now. ", op->p1);
-        break;
-    case OP_CursorLock:
-        strbuf_appendf(out, "Lock cursor [%d], preventing writes from "
-                       "other cursors to the same underlying btree. ",
-                       op->p1);
-        break;
-    case OP_CursorUnlock:
-        strbuf_appendf(out, "Unlock cursor [%d], allowing writes from "
-                       "other cursors to the same underlying btree. ",
-                       op->p1);
-        break;
 #ifdef SQLITE_DEBUG
     case OP_ReleaseReg:
         strbuf_appendf(out, "Release R%d..R%d", op->p1, op->p1+op->p2);
