@@ -629,6 +629,30 @@ do_atof_calc:
 #endif
 
 /*
+** Render an signed 64-bit integer as text.  Store the result in zOut[].
+**
+** The caller must ensure that zOut[] is at least 21 bytes in size.
+*/
+void sqlite3Int64ToText(i64 v, char *zOut){
+  int i;
+  u64 x;
+  char zTemp[22];
+  if( v<0 ){
+    x = (v==SMALLEST_INT64) ? ((u64)1)<<63 : -v;
+  }else{
+    x = v;
+  }
+  i = sizeof(zTemp)-2;
+  zTemp[sizeof(zTemp)-1] = 0;
+  do{
+    zTemp[i--] = (x%10) + '0';
+    x = x/10;
+  }while( x );
+  if( v<0 ) zTemp[i--] = '-';
+  memcpy(zOut, &zTemp[i+1], sizeof(zTemp)-1-i);
+}
+
+/*
 ** Compare the 19-character string zNum against the text representation
 ** value 2^63:  9223372036854775808.  Return negative, zero, or positive
 ** if zNum is less than, equal to, or greater than the string.
@@ -1183,8 +1207,7 @@ u8 sqlite3GetVarint32(const unsigned char *p, u32 *v){
     u64 v64;
     u8 n;
 
-    p -= 2;
-    n = sqlite3GetVarint(p, &v64);
+    n = sqlite3GetVarint(p-2, &v64);
     assert( n>3 && n<=9 );
     if( (v64 & SQLITE_MAX_U32)!=v64 ){
       *v = 0xffffffff;

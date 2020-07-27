@@ -69,7 +69,7 @@ int sqlite3BtreeTrace=1;  /* True to enable tracing */
 ** but the test harness needs to access it so we make it global for 
 ** test builds.
 **
-** Access to this variable is protected by SQLITE_MUTEX_STATIC_MASTER.
+** Access to this variable is protected by SQLITE_MUTEX_STATIC_MAIN.
 */
 #ifdef SQLITE_TEST
 BtShared *SQLITE_WSD sqlite3SharedCacheList = 0;
@@ -357,7 +357,7 @@ static int setSharedCacheTableLock(Btree *p, Pgno iTable, u8 eLock){
 
   /* A connection with the read-uncommitted flag set will never try to
   ** obtain a read-lock using this function. The only read-lock obtained
-  ** by a connection in read-uncommitted mode is on the sqlite_master 
+  ** by a connection in read-uncommitted mode is on the sqlite_schema 
   ** table, and that lock is obtained in BtreeBeginTrans().  */
   assert( 0==(p->db->flags&SQLITE_ReadUncommit) || eLock==WRITE_LOCK );
 
@@ -993,7 +993,7 @@ static void ptrmapPut(BtShared *pBt, Pgno key, u8 eType, Pgno parent, int *pRC){
   if( *pRC ) return;
 
   assert( sqlite3_mutex_held(pBt->mutex) );
-  /* The master-journal page number must never be used as a pointer map page */
+  /* The super-journal page number must never be used as a pointer map page */
   assert( 0==PTRMAP_ISPAGE(pBt, PENDING_BYTE_PAGE(pBt)) );
 
   assert( pBt->autoVacuum );
@@ -2422,7 +2422,7 @@ int sqlite3BtreeOpen(
 #if SQLITE_THREADSAFE
       mutexOpen = sqlite3MutexAlloc(SQLITE_MUTEX_STATIC_OPEN);
       sqlite3_mutex_enter(mutexOpen);
-      mutexShared = sqlite3MutexAlloc(SQLITE_MUTEX_STATIC_MASTER);
+      mutexShared = sqlite3MutexAlloc(SQLITE_MUTEX_STATIC_MAIN);
       sqlite3_mutex_enter(mutexShared);
 #endif
       for(pBt=GLOBAL(BtShared*,sqlite3SharedCacheList); pBt; pBt=pBt->pNext){
@@ -2541,7 +2541,7 @@ int sqlite3BtreeOpen(
     pBt->nRef = 1;
     if( p->sharable ){
       MUTEX_LOGIC( sqlite3_mutex *mutexShared; )
-      MUTEX_LOGIC( mutexShared = sqlite3MutexAlloc(SQLITE_MUTEX_STATIC_MASTER);)
+      MUTEX_LOGIC( mutexShared = sqlite3MutexAlloc(SQLITE_MUTEX_STATIC_MAIN);)
       if( SQLITE_THREADSAFE && sqlite3GlobalConfig.bCoreMutex ){
         pBt->mutex = sqlite3MutexAlloc(SQLITE_MUTEX_FAST);
         if( pBt->mutex==0 ){
@@ -2630,13 +2630,13 @@ btree_open_out:
 */
 static int removeFromSharingList(BtShared *pBt){
 #ifndef SQLITE_OMIT_SHARED_CACHE
-  MUTEX_LOGIC( sqlite3_mutex *pMaster; )
+  MUTEX_LOGIC( sqlite3_mutex *pMainMtx; )
   BtShared *pList;
   int removed = 0;
 
   assert( sqlite3_mutex_notheld(pBt->mutex) );
-  MUTEX_LOGIC( pMaster = sqlite3MutexAlloc(SQLITE_MUTEX_STATIC_MASTER); )
-  sqlite3_mutex_enter(pMaster);
+  MUTEX_LOGIC( pMainMtx = sqlite3MutexAlloc(SQLITE_MUTEX_STATIC_MAIN); )
+  sqlite3_mutex_enter(pMainMtx);
   pBt->nRef--;
   if( pBt->nRef<=0 ){
     if( GLOBAL(BtShared*,sqlite3SharedCacheList)==pBt ){
@@ -2655,7 +2655,7 @@ static int removeFromSharingList(BtShared *pBt){
     }
     removed = 1;
   }
-  sqlite3_mutex_leave(pMaster);
+  sqlite3_mutex_leave(pMainMtx);
   return removed;
 #else
   return 1;
@@ -3886,7 +3886,7 @@ int sqlite3BtreeIncrVacuum(Btree *p){
     Pgno nFree = get4byte(&pBt->pPage1->aData[36]);
     Pgno nFin = finalDbSize(pBt, nOrig, nFree);
 
-    if( nOrig<nFin ){
+    if( nOrig<nFin || nFree>=nOrig ){
       rc = SQLITE_CORRUPT_BKPT;
     }else if( nFree>0 ){
       rc = saveAllCursors(pBt, 0, 0);
@@ -3983,18 +3983,18 @@ static int autoVacuumCommit(BtShared *pBt){
 **
 ** This call is a no-op if no write-transaction is currently active on pBt.
 **
-** Otherwise, sync the database file for the btree pBt. zMaster points to
-** the name of a master journal file that should be written into the
-** individual journal file, or is NULL, indicating no master journal file 
+** Otherwise, sync the database file for the btree pBt. zSuperJrnl points to
+** the name of a super-journal file that should be written into the
+** individual journal file, or is NULL, indicating no super-journal file 
 ** (single database transaction).
 **
-** When this is called, the master journal should already have been
+** When this is called, the super-journal should already have been
 ** created, populated with this journal pointer and synced to disk.
 **
 ** Once this is routine has returned, the only thing required to commit
 ** the write-transaction for this database file is to delete the journal.
 */
-int sqlite3BtreeCommitPhaseOne(Btree *p, const char *zMaster){
+int sqlite3BtreeCommitPhaseOne(Btree *p, const char *zSuperJrnl){
   int rc = SQLITE_OK;
   if( p->inTrans==TRANS_WRITE ){
     BtShared *pBt = p->pBt;
@@ -4011,7 +4011,7 @@ int sqlite3BtreeCommitPhaseOne(Btree *p, const char *zMaster){
       sqlite3PagerTruncateImage(pBt->pPager, pBt->nPage);
     }
 #endif
-    rc = sqlite3PagerCommitPhaseOne(pBt->pPager, zMaster, 0);
+    rc = sqlite3PagerCommitPhaseOne(pBt->pPager, zSuperJrnl, 0);
     sqlite3BtreeLeave(p);
   }
   return rc;
@@ -4074,7 +4074,7 @@ static void btreeEndTransaction(Btree *p){
 ** the upper layer will attempt a rollback. However, if the second argument
 ** is non-zero then this b-tree transaction is part of a multi-file 
 ** transaction. In this case, the transaction has already been committed 
-** (by deleting a master journal file) and the caller will ignore this 
+** (by deleting a super-journal file) and the caller will ignore this 
 ** functions return code. So, even if an error occurs in the pager layer,
 ** reset the b-tree objects internal state to indicate that the write
 ** transaction has been closed. This is quite safe, as the pager will have
@@ -8772,7 +8772,11 @@ int sqlite3BtreeInsert(
   assert( pPage->intKey || pX->nKey>=0 );
   assert( pPage->leaf || !pPage->intKey );
   if( pPage->nFree<0 ){
-    rc = btreeComputeFreeSpace(pPage);
+    if( pCur->eState>CURSOR_INVALID ){
+      rc = SQLITE_CORRUPT_BKPT;
+    }else{
+      rc = btreeComputeFreeSpace(pPage);
+    }
     if( rc ) return rc;
   }
 
@@ -9632,7 +9636,7 @@ static void checkAppendMsg(
   sqlite3_str_vappendf(&pCheck->errMsg, zFormat, ap);
   va_end(ap);
   if( pCheck->errMsg.accError==SQLITE_NOMEM ){
-    pCheck->mallocFailed = 1;
+    pCheck->bOomFault = 1;
   }
 }
 #endif /* SQLITE_OMIT_INTEGRITY_CHECK */
@@ -9697,7 +9701,7 @@ static void checkPtrmap(
 
   rc = ptrmapGet(pCheck->pBt, iChild, &ePtrmapType, &iPtrmapParent);
   if( rc!=SQLITE_OK ){
-    if( rc==SQLITE_NOMEM || rc==SQLITE_IOERR_NOMEM ) pCheck->mallocFailed = 1;
+    if( rc==SQLITE_NOMEM || rc==SQLITE_IOERR_NOMEM ) pCheck->bOomFault = 1;
     checkAppendMsg(pCheck, "Failed to read ptrmap key=%d", iChild);
     return;
   }
@@ -10116,6 +10120,15 @@ end_of_check:
 ** allocation errors,  an error message held in memory obtained from
 ** malloc is returned if *pnErr is non-zero.  If *pnErr==0 then NULL is
 ** returned.  If a memory allocation error occurs, NULL is returned.
+**
+** If the first entry in aRoot[] is 0, that indicates that the list of
+** root pages is incomplete.  This is a "partial integrity-check".  This
+** happens when performing an integrity check on a single table.  The
+** zero is skipped, of course.  But in addition, the freelist checks
+** and the checks to make sure every page is referenced are also skipped,
+** since obviously it is not possible to know which pages are covered by
+** the unverified btrees.  Except, if aRoot[1] is 1, then the freelist
+** checks are still performed.
 */
 char *sqlite3BtreeIntegrityCheck(
   sqlite3 *db,  /* Database connection that is running the check */
@@ -10131,6 +10144,16 @@ char *sqlite3BtreeIntegrityCheck(
   u64 savedDbFlags = pBt->db->flags;
   char zErr[100];
   VVA_ONLY( int nRef );
+  int bPartial = 0;            /* True if not checking all btrees */
+  int bCkFreelist = 1;         /* True to scan the freelist */
+  assert( nRoot>0 );
+
+  /* aRoot[0]==0 means this is a partial check */
+  if( aRoot[0]==0 ){
+    assert( nRoot>1 );
+    bPartial = 1;
+    if( aRoot[1]!=1 ) bCkFreelist = 0;
+  }
 
   sqlite3BtreeEnter(p);
   assert( p->inTrans>TRANS_NONE && pBt->inTransaction>TRANS_NONE );
@@ -10142,7 +10165,7 @@ char *sqlite3BtreeIntegrityCheck(
   sCheck.nPage = btreePagecount(sCheck.pBt);
   sCheck.mxErr = mxErr;
   sCheck.nErr = 0;
-  sCheck.mallocFailed = 0;
+  sCheck.bOomFault = 0;
   sCheck.zPfx = 0;
   sCheck.v1 = 0;
   sCheck.v2 = 0;
@@ -10156,12 +10179,12 @@ char *sqlite3BtreeIntegrityCheck(
 
   sCheck.aPgRef = sqlite3MallocZero((sCheck.nPage / 8)+ 1);
   if( !sCheck.aPgRef ){
-    sCheck.mallocFailed = 1;
+    sCheck.bOomFault = 1;
     goto integrity_ck_cleanup;
   }
   sCheck.heap = (u32*)sqlite3PageMalloc( pBt->pageSize );
   if( sCheck.heap==0 ){
-    sCheck.mallocFailed = 1;
+    sCheck.bOomFault = 1;
     goto integrity_ck_cleanup;
   }
 
@@ -10170,29 +10193,33 @@ char *sqlite3BtreeIntegrityCheck(
 
   /* Check the integrity of the freelist
   */
-  sCheck.zPfx = "Main freelist: ";
-  checkList(&sCheck, 1, get4byte(&pBt->pPage1->aData[32]),
-            get4byte(&pBt->pPage1->aData[36]));
-  sCheck.zPfx = 0;
+  if( bCkFreelist ){
+    sCheck.zPfx = "Main freelist: ";
+    checkList(&sCheck, 1, get4byte(&pBt->pPage1->aData[32]),
+              get4byte(&pBt->pPage1->aData[36]));
+    sCheck.zPfx = 0;
+  }
 
   /* Check all the tables.
   */
 #ifndef SQLITE_OMIT_AUTOVACUUM
-  if( pBt->autoVacuum ){
-    int mx = 0;
-    int mxInHdr;
-    for(i=0; (int)i<nRoot; i++) if( mx<aRoot[i] ) mx = aRoot[i];
-    mxInHdr = get4byte(&pBt->pPage1->aData[52]);
-    if( mx!=mxInHdr ){
+  if( !bPartial ){
+    if( pBt->autoVacuum ){
+      int mx = 0;
+      int mxInHdr;
+      for(i=0; (int)i<nRoot; i++) if( mx<aRoot[i] ) mx = aRoot[i];
+      mxInHdr = get4byte(&pBt->pPage1->aData[52]);
+      if( mx!=mxInHdr ){
+        checkAppendMsg(&sCheck,
+          "max rootpage (%d) disagrees with header (%d)",
+          mx, mxInHdr
+        );
+      }
+    }else if( get4byte(&pBt->pPage1->aData[64])!=0 ){
       checkAppendMsg(&sCheck,
-        "max rootpage (%d) disagrees with header (%d)",
-        mx, mxInHdr
+        "incremental_vacuum enabled with a max rootpage of zero"
       );
     }
-  }else if( get4byte(&pBt->pPage1->aData[64])!=0 ){
-    checkAppendMsg(&sCheck,
-      "incremental_vacuum enabled with a max rootpage of zero"
-    );
   }
 #endif
   testcase( pBt->db->flags & SQLITE_CellSizeCk );
@@ -10201,7 +10228,7 @@ char *sqlite3BtreeIntegrityCheck(
     i64 notUsed;
     if( aRoot[i]==0 ) continue;
 #ifndef SQLITE_OMIT_AUTOVACUUM
-    if( pBt->autoVacuum && aRoot[i]>1 ){
+    if( pBt->autoVacuum && aRoot[i]>1 && !bPartial ){
       checkPtrmap(&sCheck, aRoot[i], PTRMAP_ROOTPAGE, 0);
     }
 #endif
@@ -10211,22 +10238,24 @@ char *sqlite3BtreeIntegrityCheck(
 
   /* Make sure every page in the file is referenced
   */
-  for(i=1; i<=sCheck.nPage && sCheck.mxErr; i++){
+  if( !bPartial ){
+    for(i=1; i<=sCheck.nPage && sCheck.mxErr; i++){
 #ifdef SQLITE_OMIT_AUTOVACUUM
-    if( getPageReferenced(&sCheck, i)==0 ){
-      checkAppendMsg(&sCheck, "Page %d is never used", i);
-    }
+      if( getPageReferenced(&sCheck, i)==0 ){
+        checkAppendMsg(&sCheck, "Page %d is never used", i);
+      }
 #else
-    /* If the database supports auto-vacuum, make sure no tables contain
-    ** references to pointer-map pages.
-    */
-    if( getPageReferenced(&sCheck, i)==0 && 
-       (PTRMAP_PAGENO(pBt, i)!=i || !pBt->autoVacuum) ){
-      checkAppendMsg(&sCheck, "Page %d is never used", i);
-    }
-    if( getPageReferenced(&sCheck, i)!=0 && 
-       (PTRMAP_PAGENO(pBt, i)==i && pBt->autoVacuum) ){
-      checkAppendMsg(&sCheck, "Pointer map page %d is referenced", i);
+      /* If the database supports auto-vacuum, make sure no tables contain
+      ** references to pointer-map pages.
+      */
+      if( getPageReferenced(&sCheck, i)==0 && 
+         (PTRMAP_PAGENO(pBt, i)!=i || !pBt->autoVacuum) ){
+        checkAppendMsg(&sCheck, "Page %d is never used", i);
+      }
+      if( getPageReferenced(&sCheck, i)!=0 && 
+         (PTRMAP_PAGENO(pBt, i)==i && pBt->autoVacuum) ){
+        checkAppendMsg(&sCheck, "Pointer map page %d is referenced", i);
+      }
     }
 #endif
   }
@@ -10236,7 +10265,7 @@ char *sqlite3BtreeIntegrityCheck(
 integrity_ck_cleanup:
   sqlite3PageFree(sCheck.heap);
   sqlite3_free(sCheck.aPgRef);
-  if( sCheck.mallocFailed ){
+  if( sCheck.bOomFault ){
     sqlite3_str_reset(&sCheck.errMsg);
     sCheck.nErr++;
   }
@@ -10356,7 +10385,7 @@ void *sqlite3BtreeSchema(Btree *p, int nBytes, void(*xFree)(void *)){
 /*
 ** Return SQLITE_LOCKED_SHAREDCACHE if another user of the same shared 
 ** btree as the argument handle holds an exclusive lock on the 
-** sqlite_master table. Otherwise SQLITE_OK.
+** sqlite_schema table. Otherwise SQLITE_OK.
 */
 int sqlite3BtreeSchemaLocked(Btree *p){
   int rc;

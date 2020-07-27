@@ -1010,9 +1010,9 @@ int sqlite3VdbeExec(
   u8 resetSchemaOnFault = 0; /* Reset schema after an error if positive */
   u8 encoding = ENC(db);     /* The database encoding */
   int iCompare = 0;          /* Result of last comparison */
-  unsigned nVmStep = 0;      /* Number of virtual machine steps */
+  u64 nVmStep = 0;           /* Number of virtual machine steps */
 #ifndef SQLITE_OMIT_PROGRESS_CALLBACK
-  unsigned nProgressLimit;   /* Invoke xProgress() when nVmStep reaches this */
+  u64 nProgressLimit;        /* Invoke xProgress() when nVmStep reaches this */
 #endif
   Mem *aMem = p->aMem;       /* Copy of p->aMem */
   Mem *pIn1 = 0;             /* 1st input operand */
@@ -1035,7 +1035,7 @@ int sqlite3VdbeExec(
     assert( 0 < db->nProgressOps );
     nProgressLimit = db->nProgressOps - (iPrior % db->nProgressOps);
   }else{
-    nProgressLimit = 0xffffffff;
+    nProgressLimit = LARGEST_UINT64;
   }
 #endif
   if( p->rc==SQLITE_NOMEM ){
@@ -1273,7 +1273,7 @@ check_for_interrupt:
     assert( db->nProgressOps!=0 );
     nProgressLimit += db->nProgressOps;
     if( db->xProgress(db->pProgressArg) ){
-      nProgressLimit = 0xffffffff;
+      nProgressLimit = LARGEST_UINT64;
       rc = SQLITE_INTERRUPT;
       goto abort_due_to_error;
     }
@@ -3552,6 +3552,17 @@ case OP_Affinity: {
 ** macros defined in sqliteInt.h.
 **
 ** If P4 is NULL then all index fields have the affinity BLOB.
+**
+** The meaning of P5 depends on whether or not the SQLITE_ENABLE_NULL_TRIM
+** compile-time option is enabled:
+**
+**   * If SQLITE_ENABLE_NULL_TRIM is enabled, then the P5 is the index
+**     of the right-most table that can be null-trimmed.
+**
+**   * If SQLITE_ENABLE_NULL_TRIM is omitted, then P5 has the value
+**     OPFLAG_NOCHNG_MAGIC if the OP_MakeRecord opcode is allowed to
+**     accept no-change records with serial_type 10.  This value is
+**     only used inside an assert() and does not affect the end result.
 */
 case OP_MakeRecord: {
   Mem *pRec;             /* The new record */
@@ -3711,7 +3722,9 @@ case OP_MakeRecord: {
         ** Give such values a special internal-use-only serial-type of 10
         ** so that they can be passed through to xUpdate and have
         ** a true sqlite3_value_nochange(). */
+#ifndef SQLITE_ENABLE_NULL_TRIM
         assert( pOp->p5==OPFLAG_NOCHNG_MAGIC || CORRUPT_DB );
+#endif
         pRec->uTemp = 10;
       }else{
         pRec->uTemp = 0;
@@ -4300,7 +4313,7 @@ case OP_ReadCookie: {               /* out2 */
   break;
 }
 
-/* Opcode: SetCookie P1 P2 P3 * *
+/* Opcode: SetCookie P1 P2 P3 * P5
 **
 ** Write the integer value P3 into cookie number P2 of database P1.
 ** P2==1 is the schema version.  P2==2 is the database format.
@@ -4309,6 +4322,11 @@ case OP_ReadCookie: {               /* out2 */
 ** database file used to store temporary tables.
 **
 ** A transaction must be started before executing this opcode.
+**
+** If P2 is the SCHEMA_VERSION cookie (cookie number 1) then the internal
+** schema version is set to P3-P5.  The "PRAGMA schema_version=N" statement
+** has P5 set to 1, so that the internal schema version will be different
+** from the database schema version, resulting in a schema reset.
 */
 case OP_SetCookie: {
   Db *pDb;
@@ -4326,7 +4344,7 @@ case OP_SetCookie: {
   if( pOp->p2==BTREE_SCHEMA_VERSION ){
     /* When the schema cookie changes, record the new cookie internally */
 #if !defined(SQLITE_BUILDING_FOR_COMDB2)
-    pDb->pSchema->schema_cookie = pOp->p3;
+    pDb->pSchema->schema_cookie = pOp->p3 - pOp->p5;
 #endif /* !defined(SQLITE_BUILDING_FOR_COMDB2) */
     db->mDbFlags |= DBFLAG_SchemaChange;
   }else if( pOp->p2==BTREE_FILE_FORMAT ){
@@ -5150,7 +5168,7 @@ seek_not_found:
 ** Synopsis: seekHit=P2
 **
 ** Set the seekHit flag on cursor P1 to the value in P2.
-* The seekHit flag is used by the IfNoHope opcode.
+** The seekHit flag is used by the IfNoHope opcode.
 **
 ** P1 must be a valid b-tree cursor.  P2 must be a boolean value,
 ** either 0 or 1.
@@ -6975,7 +6993,7 @@ case OP_SqlExec: {
 */
 case OP_ParseSchema: {
   int iDb;
-  const char *zMaster;
+  const char *zSchema;
   char *zSql;
   InitData initData;
 
@@ -7007,14 +7025,14 @@ case OP_ParseSchema: {
   }else
 #endif
   {
-    zMaster = DFLT_SCHEMA_TABLE;
+    zSchema = DFLT_SCHEMA_TABLE;
     initData.db = db;
     initData.iDb = iDb;
     initData.pzErrMsg = &p->zErrMsg;
     initData.mInitFlags = 0;
     zSql = sqlite3MPrintf(db,
        "SELECT*FROM\"%w\".%s WHERE %s ORDER BY rowid",
-       db->aDb[iDb].zDbSName, zMaster, pOp->p4.z);
+       db->aDb[iDb].zDbSName, zSchema, pOp->p4.z);
     if( zSql==0 ){
       rc = SQLITE_NOMEM_BKPT;
     }else{
@@ -7028,7 +7046,7 @@ case OP_ParseSchema: {
       if( rc==SQLITE_OK && initData.nInitRow==0 ){
         /* The OP_ParseSchema opcode with a non-NULL P4 argument should parse
         ** at least one SQL statement. Any less than that indicates that
-        ** the sqlite_master table is corrupt. */
+        ** the sqlite_schema table is corrupt. */
         rc = SQLITE_CORRUPT_BKPT;
       }
       sqlite3DbFreeNN(db, zSql);
@@ -9056,7 +9074,7 @@ vdbe_return:
   while( nVmStep>=nProgressLimit && db->xProgress!=0 ){
     nProgressLimit += db->nProgressOps;
     if( db->xProgress(db->pProgressArg) ){
-      nProgressLimit = 0xffffffff;
+      nProgressLimit = LARGEST_UINT64;
       rc = SQLITE_INTERRUPT;
       goto abort_due_to_error;
     }

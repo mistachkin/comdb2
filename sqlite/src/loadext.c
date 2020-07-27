@@ -701,7 +701,7 @@ int sqlite3_enable_load_extension(sqlite3 *db, int onoff){
 ** The following object holds the list of automatically loaded
 ** extensions.
 **
-** This list is shared across threads.  The SQLITE_MUTEX_STATIC_MASTER
+** This list is shared across threads.  The SQLITE_MUTEX_STATIC_MAIN
 ** mutex must be held while accessing this list.
 */
 typedef struct sqlite3AutoExtList sqlite3AutoExtList;
@@ -743,7 +743,7 @@ int sqlite3_auto_extension(
   {
     u32 i;
 #if SQLITE_THREADSAFE
-    sqlite3_mutex *mutex = sqlite3MutexAlloc(SQLITE_MUTEX_STATIC_MASTER);
+    sqlite3_mutex *mutex = sqlite3MutexAlloc(SQLITE_MUTEX_STATIC_MAIN);
 #endif
     wsdAutoextInit;
     sqlite3_mutex_enter(mutex);
@@ -781,7 +781,7 @@ int sqlite3_cancel_auto_extension(
   void (*xInit)(void)
 ){
 #if SQLITE_THREADSAFE
-  sqlite3_mutex *mutex = sqlite3MutexAlloc(SQLITE_MUTEX_STATIC_MASTER);
+  sqlite3_mutex *mutex = sqlite3MutexAlloc(SQLITE_MUTEX_STATIC_MAIN);
 #endif
   int i;
   int n = 0;
@@ -808,7 +808,7 @@ void sqlite3_reset_auto_extension(void){
 #endif
   {
 #if SQLITE_THREADSAFE
-    sqlite3_mutex *mutex = sqlite3MutexAlloc(SQLITE_MUTEX_STATIC_MASTER);
+    sqlite3_mutex *mutex = sqlite3MutexAlloc(SQLITE_MUTEX_STATIC_MAIN);
 #endif
     wsdAutoextInit;
     sqlite3_mutex_enter(mutex);
@@ -838,7 +838,7 @@ void sqlite3AutoLoadExtensions(sqlite3 *db){
   for(i=0; go; i++){
     char *zErrmsg;
 #if SQLITE_THREADSAFE
-    sqlite3_mutex *mutex = sqlite3MutexAlloc(SQLITE_MUTEX_STATIC_MASTER);
+    sqlite3_mutex *mutex = sqlite3MutexAlloc(SQLITE_MUTEX_STATIC_MAIN);
 #endif
 #ifdef SQLITE_OMIT_LOAD_EXTENSION
     const sqlite3_api_routines *pThunk = 0;

@@ -381,7 +381,7 @@ struct Btree {
 **
 ** Fields in this structure are accessed under the BtShared.mutex
 ** mutex, except for nRef and pNext which are accessed under the
-** global SQLITE_MUTEX_STATIC_MASTER mutex.  The pPager field
+** global SQLITE_MUTEX_STATIC_MAIN mutex.  The pPager field
 ** may not be modified once it is initially set as long as nRef>0.
 ** The pSchema field may be set once under BtShared.mutex and
 ** thereafter is unchanged as long as nRef>0.
@@ -679,7 +679,7 @@ struct IntegrityCk {
   Pgno nPage;       /* Number of pages in the database */
   int mxErr;        /* Stop accumulating errors when this reaches zero */
   int nErr;         /* Number of messages written to zErrMsg so far */
-  int mallocFailed; /* A memory allocation error has occurred */
+  int bOomFault;    /* A memory allocation error has occurred */
   const char *zPfx; /* Error message prefix */
   int v1, v2;       /* Values for up to two %d fields in zPfx */
   StrAccum errMsg;  /* Accumulate the error message text here */
