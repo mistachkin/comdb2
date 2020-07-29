@@ -164,6 +164,7 @@ void get_disable_skipscan_all();
 */
 #define SQLITE_INDEX_SAMPLES 10
 
+static __thread int skip1;
 static __thread int skip4;
 int64_t analyze_get_nrecs( int iTable );
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
@@ -222,13 +223,14 @@ static void openStatTable(
   */
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
   if( db->isExpert==0 ){
+    skip1 = 0; /* TODO: Flag on connection? */
     skip4 = 0; /* TODO: Flag on connection? */
     for(i=0; i<ArraySize(aTable); i++){
       const char *zTab = aTable[i].zName;
       Table *pStat;
       if( (pStat = sqlite3FindTable(db, zTab, NULL))==0 ){
         if( zTab[11]=='1' ){
-          /* do nothing */
+          skip1 = 1;
         }else if( zTab[11]=='4' ){
           skip4 = 1;
         }
@@ -1694,6 +1696,13 @@ static void analyzeDatabase(Parse *pParse, int iDb){
   int iMem;
   int iTab;
 
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  if( skip1 ){
+    logmsg(LOGMSG_USER, "%s: No sqlite_stat1, skipping...\n", __func__);
+    return;
+  }
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+
   sqlite3BeginWriteOperation(pParse, 0, iDb);
   iStatCur = pParse->nTab;
   pParse->nTab += 3;
@@ -1716,6 +1725,13 @@ static void analyzeDatabase(Parse *pParse, int iDb){
 static void analyzeTable(Parse *pParse, Table *pTab, Index *pOnlyIdx){
   int iDb;
   int iStatCur;
+
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  if( skip1 ){
+    logmsg(LOGMSG_USER, "%s: No sqlite_stat1, skipping...\n", __func__);
+    return;
+  }
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
   assert( pTab!=0 );
   assert( sqlite3BtreeHoldsAllMutexes(pParse->db) );
