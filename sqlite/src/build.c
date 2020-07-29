@@ -510,9 +510,15 @@ retry_after_fdb_creation:
     if( p==0 && sqlite3StrNICmp(zName, "sqlite_", 7)==0 ){
       if( sqlite3StrICmp(zName+7, &ALT_SCHEMA_TABLE[7])==0 ){
         p = sqlite3HashFind(&db->aDb[0].pSchema->tblHash, DFLT_SCHEMA_TABLE);
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+        if( p ) i = 0;
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
       }else if( sqlite3StrICmp(zName+7, &ALT_TEMP_SCHEMA_TABLE[7])==0 ){
         p = sqlite3HashFind(&db->aDb[1].pSchema->tblHash, 
                             DFLT_TEMP_SCHEMA_TABLE);
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+        if( p ) i = 1;
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
       }
     }
   }
