@@ -1697,7 +1697,7 @@ static void analyzeDatabase(Parse *pParse, int iDb){
   int iTab;
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-  if( skip1 ){
+  if( skip1 || sqlite3FindTable(db, "sqlite_stat1", NULL)==0 ){
     logmsg(LOGMSG_USER, "%s: No sqlite_stat1, skipping...\n", __func__);
     return;
   }
@@ -1727,7 +1727,7 @@ static void analyzeTable(Parse *pParse, Table *pTab, Index *pOnlyIdx){
   int iStatCur;
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-  if( skip1 ){
+  if( skip1 || sqlite3FindTable(db, "sqlite_stat1", NULL)==0 ){
     logmsg(LOGMSG_USER, "%s: No sqlite_stat1, skipping...\n", __func__);
     return;
   }
