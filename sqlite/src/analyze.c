@@ -1575,7 +1575,7 @@ static void analyzeOneTable(
     /* Add the entries to the stat4 table. */
 #ifdef SQLITE_ENABLE_STAT4
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-    if( skip4==0 ){
+    if( skip4==0 && OptimizationEnabled(db, SQLITE_Stat4) && db->nAnalysisLimit==0 ){
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     if( OptimizationEnabled(db, SQLITE_Stat4) && db->nAnalysisLimit==0 ){
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
