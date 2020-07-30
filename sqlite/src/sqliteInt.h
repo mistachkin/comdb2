@@ -1249,10 +1249,10 @@ int comdb2UpsertIdx(Vdbe *v);
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
 #include "sqlite_btree.h"
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+#include "pager.h"
 #include "btree.h"
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 #include "vdbe.h"
-#include "pager.h"
 #include "pcache.h"
 #include "os.h"
 #include "mutex.h"
@@ -1549,7 +1549,7 @@ struct sqlite3 {
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
     char *zTblName;             /* Optional table name for attachments */
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-    int newTnum;                /* Rootpage of table being initialized */
+    Pgno newTnum;               /* Rootpage of table being initialized */
     u8 iDb;                     /* Which db file is being initialized */
     u8 busy;                    /* TRUE if currently initializing */
     unsigned orphanTrigger : 1; /* Last statement is orphaned TEMP trigger */
@@ -2244,7 +2244,7 @@ struct Table {
   char *zColAff;       /* String defining the affinity of each column */
   ExprList *pCheck;    /* All CHECK constraints */
                        /*   ... also used as column name list in a VIEW */
-  int tnum;            /* Root BTree page for this table */
+  Pgno tnum;           /* Root BTree page for this table */
   u32 nTabRef;         /* Number of pointers to this Table */
   u32 tabFlags;        /* Mask of TF_* values */
   i16 iPKey;           /* If not negative, use aCol[iPKey] as the rowid */
@@ -2546,7 +2546,7 @@ struct Index {
   KeyInfo *pKeyInfo;       /* A KeyInfo object suitable for this index */
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   ExprList *aColExpr;      /* Column expressions */
-  int tnum;                /* DB Page containing root of this index */
+  Pgno tnum;               /* DB Page containing root of this index */
   LogEst szIdxRow;         /* Estimated average row size in bytes */
   u16 nKeyCol;             /* Number of columns forming the key */
   u16 nColumn;             /* Number of columns stored in the index */
@@ -3838,6 +3838,7 @@ typedef struct {
   int rc;             /* Result code stored here */
   u32 mInitFlags;     /* Flags controlling error messages */
   u32 nInitRow;       /* Number of rows processed */
+  Pgno mxPage;        /* Maximum page number.  0 for no limit. */
 } InitData;
 
 /*
@@ -4720,6 +4721,7 @@ int sqlite3RealSameAsInt(double,sqlite3_int64);
 void sqlite3Int64ToText(i64,char*);
 int sqlite3AtoF(const char *z, double*, int, u8);
 int sqlite3GetInt32(const char *, int*);
+int sqlite3GetUInt32(const char*, u32*);
 int sqlite3Atoi(const char*);
 #ifndef SQLITE_OMIT_UTF16
 int sqlite3Utf16ByteLen(const void *pData, int nChar);
@@ -4851,7 +4853,7 @@ extern int sqlite3PendingByte;
 #ifdef VDBE_PROFILE
 extern sqlite3_uint64 sqlite3NProfileCnt;
 #endif
-void sqlite3RootPageMoved(sqlite3*, int, int, int);
+void sqlite3RootPageMoved(sqlite3*, int, Pgno, Pgno);
 void sqlite3Reindex(Parse*, Token*, Token*);
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
 void sqlite3AlterRenameTable(Parse*, Token*, Token*, int);
@@ -4981,7 +4983,7 @@ void sqlite3AutoLoadExtensions(sqlite3*);
 #endif
 
 #ifndef SQLITE_OMIT_SHARED_CACHE
-  void sqlite3TableLock(Parse *, int, int, u8, const char *);
+  void sqlite3TableLock(Parse *, int, Pgno, u8, const char *);
 #else
   #define sqlite3TableLock(v,w,x,y,z)
 #endif

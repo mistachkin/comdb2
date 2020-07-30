@@ -2790,10 +2790,10 @@ case OP_Compare: {
   int p1;
   int p2;
   const KeyInfo *pKeyInfo;
-  int idx;
+  u32 idx;
   CollSeq *pColl;    /* Collating sequence to use on this term */
   int bRev;          /* True for DESCENDING sort order */
-  int *aPermute;     /* The permutation */
+  u32 *aPermute;     /* The permutation */
 
   if( (pOp->p5 & OPFLAG_PERMUTE)==0 ){
     aPermute = 0;
@@ -2822,7 +2822,7 @@ case OP_Compare: {
   }
 #endif /* SQLITE_DEBUG */
   for(i=0; i<n; i++){
-    idx = aPermute ? aPermute[i] : i;
+    idx = aPermute ? aPermute[i] : (u32)i;
     assert( memIsValid(&aMem[p1+idx]) );
     assert( memIsValid(&aMem[p2+idx]) );
     REGISTER_TRACE(p1+idx, &aMem[p1+idx]);
@@ -3137,7 +3137,7 @@ case OP_Column: {
   i64 payloadSize64; /* Number of bytes in the record */
   int datacopy;
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-  int p2;            /* column number to retrieve */
+  u32 p2;            /* column number to retrieve */
   VdbeCursor *pC;    /* The VDBE cursor */
   BtCursor *pCrsr;   /* The BTree cursor */
   u32 *aOffset;      /* aOffset[i] is offset to start of data for i-th column */
@@ -3155,7 +3155,7 @@ case OP_Column: {
   assert( pOp->p1>=0 && pOp->p1<p->nCursor );
   pC = p->apCsr[pOp->p1];
   assert( pC!=0 );
-  p2 = pOp->p2;
+  p2 = (u32)pOp->p2;
 
   /* If the cursor cache is stale (meaning it is not currently point at
   ** the correct row) then bring it up-to-date by doing the necessary 
@@ -3342,7 +3342,7 @@ cooked_access:
           offset64 += sqlite3VdbeSerialTypeLen(t);
         }
         aOffset[++i] = (u32)(offset64 & 0xffffffff);
-      }while( i<=p2 && zHdr<zEndHdr );
+      }while( (u32)i<=p2 && zHdr<zEndHdr );
 
       /* The record is corrupt if any of the following are true:
       ** (1) the bytes of the header extend past the declared header size
@@ -4448,7 +4448,7 @@ case OP_SetCookie: {
 case OP_ReopenIdx: {
   int nField;
   KeyInfo *pKeyInfo;
-  int p2;
+  u32 p2;
   int iDb;
   int wrFlag;
   Btree *pX;
@@ -4487,7 +4487,7 @@ case OP_OpenWrite:
 
   nField = 0;
   pKeyInfo = 0;
-  p2 = pOp->p2;
+  p2 = (u32)pOp->p2;
   iDb = pOp->p3;
   assert( iDb>=0 && iDb<db->nDb );
   assert( DbMaskTest(p->btreeMask, iDb) );
@@ -4695,7 +4695,7 @@ case OP_OpenEphemeral: {
       */
       if( (pCx->pKeyInfo = pKeyInfo = pOp->p4.pKeyInfo)!=0 ){
         assert( pOp->p4type==P4_KEYINFO );
-        rc = sqlite3BtreeCreateTable(pCx->pBtx, (int*)&pCx->pgnoRoot,
+        rc = sqlite3BtreeCreateTable(pCx->pBtx, &pCx->pgnoRoot,
                                      BTREE_BLOBKEY | pOp->p5); 
         if( rc==SQLITE_OK ){
           assert( pCx->pgnoRoot==SCHEMA_ROOT+1 );
@@ -6069,10 +6069,6 @@ case OP_RowData: {
   */
   assert( pC->deferredMoveto==0 );
   assert( sqlite3BtreeCursorIsValid(pCrsr) );
-#if 0  /* Not required due to the previous to assert() statements */
-  rc = sqlite3VdbeCursorMoveto(pC);
-  if( rc!=SQLITE_OK ) goto abort_due_to_error;
-#endif
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
   if( pC->isTable==0 ){
@@ -6902,7 +6898,7 @@ case OP_Clear: {
   assert( p->readOnly==0 );
   assert( DbMaskTest(p->btreeMask, pOp->p2) );
   rc = sqlite3BtreeClearTable(
-      db->aDb[pOp->p2].pBt, pOp->p1, (pOp->p3 ? &nChange : 0)
+      db->aDb[pOp->p2].pBt, (u32)pOp->p1, (pOp->p3 ? &nChange : 0)
   );
   if( pOp->p3 ){
     p->nChange += nChange;
@@ -6951,7 +6947,7 @@ case OP_ResetSorter: {
 ** The root page number of the new b-tree is stored in register P2.
 */
 case OP_CreateBtree: {          /* out2 */
-  int pgno;
+  Pgno pgno;
   Db *pDb;
 
   sqlite3VdbeIncrWriteCounter(p, 0);
@@ -7030,6 +7026,7 @@ case OP_ParseSchema: {
     initData.iDb = iDb;
     initData.pzErrMsg = &p->zErrMsg;
     initData.mInitFlags = 0;
+    initData.mxPage = sqlite3BtreeLastPage(db->aDb[iDb].pBt);
     zSql = sqlite3MPrintf(db,
        "SELECT*FROM\"%w\".%s WHERE %s ORDER BY rowid",
        db->aDb[iDb].zDbSName, zSchema, pOp->p4.z);
@@ -7146,7 +7143,7 @@ case OP_DropTrigger: {
 */
 case OP_IntegrityCk: {
   int nRoot;      /* Number of tables to check.  (Number of root pages.) */
-  int *aRoot;     /* Array of rootpage numbers for tables to be checked */
+  Pgno *aRoot;    /* Array of rootpage numbers for tables to be checked */
   int nErr;       /* Number of errors reported */
   char *z;        /* Text of the error report */
   Mem *pnErr;     /* Register keeping track of errors remaining */
