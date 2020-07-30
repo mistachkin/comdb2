@@ -167,6 +167,15 @@ void get_disable_skipscan_all();
 static __thread int skip1;
 static __thread int skip4;
 int64_t analyze_get_nrecs( int iTable );
+
+static int is_stat1_missing(Parse *pParse){
+  if( skip1 ) return 1; /* already known to be missing? */
+  if( pParse->db->isExpert ) return 0; /* will be created */
+  if( sqlite3FindTable(pParse->db, "sqlite_stat1", NULL)==0 ){
+    return 1; /* table not present, won't be created */
+  }
+  return 0; /* table found */
+}
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 /*
@@ -1696,7 +1705,7 @@ static void analyzeDatabase(Parse *pParse, int iDb){
   int iTab;
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-  if( skip1 || sqlite3FindTable(db, "sqlite_stat1", NULL)==0 ){
+  if( is_stat1_missing(pParse) ){
     logmsg(LOGMSG_USER, "%s: No sqlite_stat1, skipping...\n", __func__);
     return;
   }
@@ -1726,7 +1735,7 @@ static void analyzeTable(Parse *pParse, Table *pTab, Index *pOnlyIdx){
   int iStatCur;
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-  if( skip1 || sqlite3FindTable(pParse->db, "sqlite_stat1", NULL)==0 ){
+  if( is_stat1_missing(pParse) ){
     logmsg(LOGMSG_USER, "%s: No sqlite_stat1, skipping...\n", __func__);
     return;
   }
