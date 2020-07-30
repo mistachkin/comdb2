@@ -1607,12 +1607,11 @@ static void analyzeOneTable(
       addrIsNull = sqlite3VdbeAddOp1(v, OP_IsNull, regSampleRowid);
       VdbeCoverage(v);
 #endif /* !defined(SQLITE_BUILDING_FOR_COMDB2) */
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
       callStatGet(pParse, regStat, STAT_GET_NEQ, regEq);
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
       addrIsNull = sqlite3VdbeAddOp1(v, OP_IsNull, regEq);
       VdbeCoverage(v);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-      callStatGet(pParse, regStat, STAT_GET_NEQ, regEq);
       callStatGet(pParse, regStat, STAT_GET_NLT, regLt);
       callStatGet(pParse, regStat, STAT_GET_NDLT, regDLt);
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
