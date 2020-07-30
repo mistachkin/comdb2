@@ -5846,7 +5846,7 @@ case OP_Delete: {
   ** (see sqlite3GenerateRowIndexDelete).
   */
   if( pC->isTable && pC->deferredMoveto ){
-    int p2; /* NOT USED: column number to retrieve */
+    Pgno p2; /* NOT USED: column number to retrieve */
     rc = sqlite3VdbeCursorMoveto(&pC, &p2);
     if( rc ) goto abort_due_to_error;
   }

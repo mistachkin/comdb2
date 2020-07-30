@@ -1246,10 +1246,10 @@ int comdb2UpsertIdx(Vdbe *v);
 ** "BusyHandler" typedefs. vdbe.h also requires a few of the opaque
 ** pointer types (i.e. FuncDef) defined above.
 */
+#include "pager.h"
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
 #include "sqlite_btree.h"
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-#include "pager.h"
 #include "btree.h"
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 #include "vdbe.h"

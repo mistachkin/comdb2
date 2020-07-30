@@ -65,8 +65,8 @@ int sqlite3BtreeSetPagerFlags(Btree*,unsigned);
 int sqlite3BtreeSyncDisabled(Btree*);
 int sqlite3BtreeSetPageSize(Btree *p, int nPagesize, int nReserve, int eFix);
 int sqlite3BtreeGetPageSize(Btree*);
-int sqlite3BtreeMaxPageCount(Btree*,int);
-u32 sqlite3BtreeLastPage(Btree*);
+int sqlite3BtreeMaxPageCount(Btree*,Pgno);
+Pgno sqlite3BtreeLastPage(Btree*);
 int sqlite3BtreeSecureDelete(Btree*,int);
 int sqlite3BtreeGetRequestedReserve(Btree*);
 int sqlite3BtreeGetReserveNoMutex(Btree *p);
@@ -79,7 +79,7 @@ int sqlite3BtreeCommitPhaseTwo(Btree*, int);
 int sqlite3BtreeCommit(Btree*);
 int sqlite3BtreeRollback(Btree*,int,int);
 int sqlite3BtreeBeginStmt(Btree*,int);
-int sqlite3BtreeCreateTable(Btree*, int*, int flags);
+int sqlite3BtreeCreateTable(Btree*, Pgno*, int flags);
 int sqlite3BtreeIsInTrans(Btree*);
 int sqlite3BtreeIsInReadTrans(Btree*);
 int sqlite3BtreeIsInBackup(Btree*);
@@ -238,7 +238,7 @@ void sqlite3BtreeCursorHint(BtCursor*, int, ...);
 int sqlite3BtreeCursor(
   Vdbe*,                               /* The associated SQLite VM */
   Btree*,                              /* BTree containing table to open */
-  int iTable,                          /* Index of root page */
+  Pgno iTable,                         /* Index of root page */
   int wrFlag,                          /* 1 for writing.  0 for read-only */
   int forOpen,                         /* 1 for open mode.  0 for create mode. */
   struct KeyInfo*,                     /* First argument to compare function */
@@ -320,7 +320,7 @@ int sqlite3BtreeGetGenId(unsigned long long,
                          char **,
                          int* /* sizeof buf if already allocated */);
 
-char *sqlite3BtreeIntegrityCheck(sqlite3*,Btree*,int*,int,int,int*);
+char *sqlite3BtreeIntegrityCheck(sqlite3*,Btree*,Pgno*,int,int,int*);
 struct Pager *sqlite3BtreePager(Btree*);
 i64 sqlite3BtreeRowCountEst(BtCursor*);
 

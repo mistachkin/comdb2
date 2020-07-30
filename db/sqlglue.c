@@ -5050,7 +5050,7 @@ void comdb2_set_tmptbl_lk(pthread_mutex_t *lk)
  **     BTREE_INTKEY                    Used for SQL tables with rowid keys
  **     BTREE_BLOBKEY                   Used for SQL indices
  */
-int sqlite3BtreeCreateTable(Btree *pBt, int *piTable, int flags)
+int sqlite3BtreeCreateTable(Btree *pBt, Pgno *piTable, int flags)
 {
     int bdberr = 0;
     int rc = SQLITE_OK;
@@ -8084,7 +8084,7 @@ BtCursor *sqlite3BtreeFakeValidCursor(void){
 int sqlite3BtreeCursor(
     Vdbe *vdbe,               /* Vdbe running the show */
     Btree *pBt,               /* BTree containing table to open */
-    int iTable,               /* Index of root page */
+    Pgno iTable,              /* Index of root page */
     int wrFlag,               /* 1 for writing.  0 for read-only. */
     int forOpen,              /* 1 for open mode.  0 for create mode. */
     struct KeyInfo *pKeyInfo, /* First argument to compare function */
@@ -8859,7 +8859,7 @@ int sqlite3BtreeData(BtCursor *pCur, u32 offset, u32 amt, void *pBuf)
  ** and a pointer to that error message is returned.  The calling function
  ** is responsible for freeing the error message when it is done.
  */
-char *sqlite3BtreeIntegrityCheck(sqlite3 *db, Btree *pBt, int *aRoot, int nRoot,
+char *sqlite3BtreeIntegrityCheck(sqlite3 *db, Btree *pBt, Pgno *aRoot, int nRoot,
                                  int mxErr, int *pnErr)
 {
     int rc = SQLITE_OK;
@@ -8870,7 +8870,7 @@ char *sqlite3BtreeIntegrityCheck(sqlite3 *db, Btree *pBt, int *aRoot, int nRoot,
     reqlog_logf(pBt->reqlogger, REQL_TRACE, "IntegrityCheck(pBt %d pages",
                 pBt->btreeid);
     for (i = 0; i < nRoot; i++) {
-        reqlog_logf(pBt->reqlogger, REQL_TRACE, "%d ", aRoot[i]);
+        reqlog_logf(pBt->reqlogger, REQL_TRACE, "%u ", aRoot[i]);
     }
     reqlog_logf(pBt->reqlogger, REQL_TRACE, ")    = %s\n", sqlite3ErrStr(rc));
     return NULL;
