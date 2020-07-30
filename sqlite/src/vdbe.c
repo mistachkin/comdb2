@@ -4713,7 +4713,7 @@ case OP_OpenEphemeral: {
         pCx->isTable = 0;
       }else{
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-        int pgno;
+        Pgno pgno;
         rc = sqlite3BtreeCreateTable(pCx->pBtx, &pgno, BTREE_INTKEY);
         if( rc==SQLITE_OK ){
           pCx->pgnoRoot = pgno;
