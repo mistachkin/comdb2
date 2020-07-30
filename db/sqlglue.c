@@ -3353,7 +3353,7 @@ int sqlite3BtreeOpen(
         bt->reqlogger = thrman_get_reqlogger(thrman_self());
         bt->btreeid = id++;
         bt->is_temporary = 1;
-        int masterPgno;
+        Pgno masterPgno;
         assert(tmptbl_clone == NULL);
         rc = sqlite3BtreeCreateTable(bt, &masterPgno, BTREE_INTKEY);
         if (rc != SQLITE_OK) goto done;
@@ -8116,7 +8116,7 @@ int sqlite3BtreeCursor(
 
     if (pBt->is_temporary) { /* temp table */
         assert(iTable >= 1); /* can never be zero or negative */
-        int pgno = iTable;
+        Pgno pgno = iTable;
         if (forOpen) {
             /*
             ** NOTE: When being called to open a temporary (table) cursor in
