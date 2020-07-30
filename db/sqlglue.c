@@ -3098,7 +3098,7 @@ sqlite3_int64 sqlite3BtreeMaxRecordSize(BtCursor *pCur){
 }
 
 Pgno sqlite3BtreeLastPage(Btree *pBt){
-    return 4294967295; /* not used for Comdb2. */
+    return 4294967294; /* not used for Comdb2. */
 }
 
 /*
