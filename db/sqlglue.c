@@ -3097,6 +3097,10 @@ sqlite3_int64 sqlite3BtreeMaxRecordSize(BtCursor *pCur){
     return 2147483647; /* see vdbeMemFromBtreeResize in vdbemem.c */
 }
 
+Pgno sqlite3BtreeLastPage(Btree *pBt){
+    return 4294967295; /* not used for Comdb2. */
+}
+
 /*
  ** Return the currently defined page size
  */
