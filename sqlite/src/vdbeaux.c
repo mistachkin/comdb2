@@ -3880,13 +3880,14 @@ int sqlite3VdbeCursorMoveto(VdbeCursor **pp, u32 *piCol){
 **
 **     10                                  interval
 **     11                                  datetime
+**    SQLITE_MAX_U32-2                     nextsequence
 **    SQLITE_MAX_U32-1                     intervaldsus
 **    SQLITE_MAX_U32                       datetimeus
 **
-** The (SQLITE_MAX_U32-1) and SQLITE_MAX_U32 were added in R6.  Prior
-** versions of Comdb2 will not understand those serial types.  Note for
-** future expansion: When introducing new serial types greater than 11,
-** please update sqlite3IsFixedLengthSerialType accordingly.
+** (SQLITE_MAX_U32-2) was added after 7.0, (SQLITE_MAX_U32-1) and SQLITE_MAX_U32
+** were added in R6.  Prior versions of Comdb2 will not understand those serial
+** types.  Note for future expansion: When introducing new serial types greater
+** than 11, please update sqlite3IsFixedLengthSerialType accordingly.
 */
 #define SIZE_OF_INT_DSMS offsetof(intv_t, u.ds.prec) /* R5 ms-interval type */
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
@@ -3915,6 +3916,12 @@ u32 sqlite3VdbeSerialType(Mem *pMem, int file_format, u32 *pLen){
     *pLen = 0;
     return 0;
   }
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  if( flags&MEM_Master ) {
+    *pLen = 8;
+    return (SQLITE_MAX_U32-2);
+  }
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   if( flags&(MEM_Int|MEM_IntReal) ){
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
     *pLen = 8;
@@ -4253,6 +4260,10 @@ u32 sqlite3VdbeSerialPut(u8 *buf, Mem *pMem, u32 serial_type){
 
     return sizeof(dttz_t);
   }
+  if ( serial_type==(SQLITE_MAX_U32-2) ) {
+      pMem->u.i = 0;
+      return sizeof(long long);
+  }
 
   if( serial_type==SQLITE_MAX_U32 ){
     /* R6 variable precision datetime*/
@@ -4587,6 +4598,11 @@ u32 sqlite3VdbeSerialGet(
       pMem->flags = MEM_Datetime;
       pMem->tz = NULL;  /* make sure it's not garbage */
       return sizeof(dttz_t);
+    }
+    case (SQLITE_MAX_U32-2): {
+      pMem->u.i = 0;
+      pMem->flags = MEM_Master;
+      return sizeof(long long);
     }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     default: {

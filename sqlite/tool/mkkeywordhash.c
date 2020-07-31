@@ -68,11 +68,15 @@ struct Keyword {
 #else
 #  define ATTACH     0x00000008
 #endif
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+#  define AUTOINCR   0x00000010
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 #ifdef SQLITE_OMIT_AUTOINCREMENT
 #  define AUTOINCR   0
 #else
 #  define AUTOINCR   0x00000010
 #endif
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 #ifdef SQLITE_OMIT_CAST
 #  define CAST       0
 #else
@@ -369,6 +373,7 @@ static Keyword aKeywordTable[] = {
   { "KW",               "TK_KW",             ALWAYS,         0      },
   { "LUA",              "TK_LUA",            ALWAYS,         0      },
   { "LZ4",              "TK_LZ4",            ALWAYS,         0      },
+  { "NEXTSEQUENCE",     "TK_CTIME_KW",       ALWAYS,         0      },
   { "NONE",             "TK_NONE",           ALWAYS,         0      },
   { "OP",               "TK_OP",             ALWAYS,         0      },
   { "OPTION",           "TK_OPTION",         ALWAYS,         0      },
