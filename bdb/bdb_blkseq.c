@@ -33,7 +33,7 @@
 
 #include <logmsg.h>
 #include "util.h"
-#include "locks_wrap.h"
+#include "pthread_wrap.h"
 #include "tohex.h"
 
 extern int blkseq_get_rcode(void *data, int datalen);

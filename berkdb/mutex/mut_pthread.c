@@ -20,7 +20,7 @@ static const char revid[] = "$Id: mut_pthread.c,v 11.57 2003/05/05 19:55:03 bost
 #endif
 
 #include "db_int.h"
-#include "locks_wrap.h"
+#include "pthread_wrap.h"
 
 #include <btree/bt_prefix.h>
 
@@ -223,7 +223,7 @@ __db_pthread_mutex_lock(dbenv, mutexp)
 
 	/* Attempt to acquire the resource for N spins. */
 	for (nspins = dbenv->tas_spins; nspins > 0; --nspins)
-		if (pthread_mutex_trylock(&mutexp->mutex) == 0)
+		if (Pthread_mutex_trylock(&mutexp->mutex) == 0)
 			break;
 
 	if (nspins == 0) { 

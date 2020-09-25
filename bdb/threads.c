@@ -26,7 +26,7 @@
 #include "memory_sync.h"
 #include "autoanalyze.h"
 #include "logmsg.h"
-#include <locks_wrap.h>
+#include <pthread_wrap.h>
 
 extern int send_myseqnum_to_master_udp(bdb_state_type *bdb_state);
 extern void *rep_catchup_add_thread(void *arg);

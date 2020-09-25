@@ -40,7 +40,8 @@
 #include "net.h"
 #include "bdb_int.h"
 #include "locks.h"
-#include "locks_wrap.h"
+#include "dbg_locks_core.h"
+#include "pthread_wrap.h"
 #include "list.h"
 #include <endian_core.h>
 
@@ -5279,6 +5280,11 @@ void *watcher_thread(void *arg)
                 logmsg(LOGMSG_FATAL,
                        "%s: truncating log for %d seconds, aborting\n",
                        __func__, stopped_count);
+
+#if defined(DBG_PTHREAD_LOCKS)
+                dbg_pthread_dump(stdout, "watcher_thread long_log_truncation_abort_thresh_sec", 0);
+#endif
+
                 abort();
             }
             if (stopped_count > gbl_long_log_truncation_warn_thresh_sec) {
@@ -5320,6 +5326,11 @@ void *watcher_thread(void *arg)
             logmsg(LOGMSG_FATAL,
                    "%s: coring, rep thread blocked too long (%d ms)\n",
                    __func__, elapsed);
+
+#if defined(DBG_PTHREAD_LOCKS)
+            dbg_pthread_dump(stdout, "watcher_thread rep_lock_wait_time_ms", 0);
+#endif
+
             bdb_dump_threads_and_maybe_abort(bdb_state, 0, 1);
         }
 
@@ -5433,6 +5444,11 @@ void *watcher_thread(void *arg)
                                 "dumping thread pool\n");
 
                 bdb_state->repinfo->rep_process_message_start_time = 0;
+
+#if defined(DBG_PTHREAD_LOCKS)
+                dbg_pthread_dump(stdout, "watcher_thread rep_process_message_start_time", 0);
+#endif
+
                 bdb_dump_threads_and_maybe_abort(bdb_state, 0, 0);
             }
 

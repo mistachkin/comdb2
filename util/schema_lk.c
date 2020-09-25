@@ -16,7 +16,7 @@
 
 #include <pthread.h>
 #include <logmsg.h>
-#include <locks_wrap.h>
+#include <pthread_wrap.h>
 #include <schema_lk.h>
 #include <assert.h>
 
@@ -45,7 +45,7 @@ inline void rdlock_schema_int(const char *file, const char *func, int line)
 inline int tryrdlock_schema_int(const char *file, const char *func, int line)
 {
     assert(have_writelock == 0);
-    int rc = pthread_rwlock_tryrdlock(&schema_lk);
+    int rc = Pthread_rwlock_tryrdlock(&schema_lk);
     if (!rc)
         have_readlock++;
 #ifdef VERBOSE_SCHEMA_LK

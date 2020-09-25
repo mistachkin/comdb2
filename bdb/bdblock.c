@@ -30,7 +30,7 @@
 
 #include "bdb_int.h"
 #include "locks.h"
-#include "locks_wrap.h"
+#include "pthread_wrap.h"
 #include "logmsg.h"
 
 /* XXX stupid chicken/egg.  this variable cannot live in the bdb_state
@@ -415,7 +415,7 @@ static inline void bdb_get_writelock_int(bdb_state_type *bdb_state,
             lk->loweredpri = 1;
 #endif
 
-        rc = pthread_rwlock_trywrlock(lock_handle->bdb_lock);
+        rc = Pthread_rwlock_trywrlock(lock_handle->bdb_lock);
         if (rc == EBUSY) {
             logmsg(LOGMSG_INFO,
                    "trying writelock (%s %lu), last writelock is %s %lu\n",
@@ -523,7 +523,7 @@ void bdb_get_readlock(bdb_state_type *bdb_state, const char *idstr,
         }
 #endif
 
-        rc = pthread_rwlock_tryrdlock(lock_handle->bdb_lock);
+        rc = Pthread_rwlock_tryrdlock(lock_handle->bdb_lock);
         if (rc == EBUSY) {
             logmsg(LOGMSG_INFO,
                    "trying readlock (%s %lu), last writelock is %s %lu\n",

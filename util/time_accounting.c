@@ -15,7 +15,7 @@
 
 #include <pthread.h>
 #include <sys/time.h>
-#include "locks_wrap.h"
+#include "pthread_wrap.h"
 #include "comdb2_atomic.h"
 #include "time_accounting.h"
 

@@ -39,7 +39,7 @@ static const char revid[] = "$Id: mp_fget.c,v 11.81 2003/09/25 02:15:16 sue Exp 
 #include "dbinc/txn.h"
 
 #include "logmsg.h"
-#include "locks_wrap.h"
+#include "pthread_wrap.h"
 #include "comdb2_atomic.h"
 #include "thread_stats.h"
 
@@ -1071,7 +1071,7 @@ __memp_add_sparse_page(dbenv, id, ufid, pgno, sparseness)
 	/* We try-lock the list mutex, since we don't want to block the caller. 
 	   If we fail to add the page, leave it. */
 
-	if (pthread_mutex_trylock(&spgs.lock) != 0)
+	if (Pthread_mutex_trylock(&spgs.lock) != 0)
 		return;
 
 	len = sizeof(spgs.list) / sizeof(spgs.list[0]);
@@ -1116,10 +1116,7 @@ __memp_init_pgcompact_routines(void)
 	Pthread_attr_setstacksize(&spgs.attrs, (PTHREAD_STACK_MIN + 0x20000));
 #endif
 
-	if (pthread_attr_setdetachstate(&spgs.attrs, PTHREAD_CREATE_DETACHED) != 0) {
-		logmsgperror("pthread_attr_setdetachstate");
-		abort();
-	}
+	Pthread_attr_setdetachstate(&spgs.attrs, PTHREAD_CREATE_DETACHED);
 
 	if (pthread_create(&spgs.tid, &spgs.attrs, __memp_send_sparse_page_thread, NULL) != 0) {
 		logmsgperror("pthread_create");

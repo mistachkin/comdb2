@@ -41,7 +41,7 @@
 #include "thdpool.h"
 #include "thread_util.h"
 #include "thread_malloc.h"
-#include "locks_wrap.h"
+#include <pthread_wrap.h>
 #include "debug_switches.h"
 #include "logmsg.h"
 #include "priority_queue.h"
@@ -254,7 +254,7 @@ struct thdpool *thdpool_create(const char *name, size_t per_thread_data_sz)
     Pthread_mutex_init(&pool->mutex, NULL);
     Pthread_attr_init(&pool->attrs);
     Pthread_attr_setstacksize(&pool->attrs, DEFAULT_THD_STACKSZ);
-    pthread_attr_setdetachstate(&pool->attrs, PTHREAD_CREATE_DETACHED);
+    Pthread_attr_setdetachstate(&pool->attrs, PTHREAD_CREATE_DETACHED);
 
     /* 1 meg default mem per thread for thread_malloc() */
     pool->mem_sz = 1 * 1024 * 1024;

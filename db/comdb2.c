@@ -74,6 +74,7 @@ void berk_memp_sync_alarm_ms(int);
 #include "timers.h"
 
 #include "comdb2.h"
+#include "dbg_locks_core.h"
 #include "sql.h"
 #include "logmsg.h"
 #include "reqlog.h"
@@ -1543,6 +1544,11 @@ void clean_exit(void)
     free(gbl_dbdir);
 
     cleanresources(); // list of lrls
+
+#if defined(DBG_PTHREAD_LOCKS)
+    dbg_pthread_term();
+#endif
+
     // TODO: would be nice but other threads need to exit first:
     // comdb2ma_exit();
     free_tzdir();
@@ -3472,7 +3478,7 @@ static int init(int argc, char **argv)
 
     Pthread_attr_init(&gbl_pthread_attr);
     Pthread_attr_setstacksize(&gbl_pthread_attr, DEFAULT_THD_STACKSZ);
-    pthread_attr_setdetachstate(&gbl_pthread_attr, PTHREAD_CREATE_DETACHED);
+    Pthread_attr_setdetachstate(&gbl_pthread_attr, PTHREAD_CREATE_DETACHED);
 
     /* Initialize the statistics. */
     init_metrics();

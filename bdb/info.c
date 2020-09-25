@@ -26,7 +26,7 @@
 #include "net.h"
 #include "bdb_int.h"
 #include "locks.h"
-#include "locks_wrap.h"
+#include "pthread_wrap.h"
 #include <build/db.h>
 #include <str0.h>
 #include <ctrace.h>
@@ -1104,7 +1104,7 @@ int bdb_run_in_a_thread(bdb_state_type *bdb_state,
 
     pthread_attr_t attr;
     Pthread_attr_init(&attr);
-    pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+    Pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
     Pthread_attr_setstacksize(&attr, 1024 * 128);
     args = malloc(sizeof(struct bdb_thread_args));
     if (args == NULL) {

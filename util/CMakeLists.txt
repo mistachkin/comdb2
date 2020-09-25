@@ -13,6 +13,7 @@ set(src
   comdb2file.c
   compat.c
   ctrace.c
+  dbg_locks.c
   debug_switches.c
   flibc.c
   fsnapf.c
@@ -30,6 +31,7 @@ set(src
   pool.c
   pooltest.c
   portmuxusr.c
+  pthread_wrap.c
   priority_queue.c
   quantize.c
   queue.c

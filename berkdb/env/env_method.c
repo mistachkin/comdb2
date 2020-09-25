@@ -46,7 +46,7 @@ static const char revid[] =
 #endif
 
 #include "logmsg.h"
-#include "locks_wrap.h"
+#include "pthread_wrap.h"
 #include "trigger_sub_status.h"
 
 static int __dbenv_init __P((DB_ENV *));

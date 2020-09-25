@@ -338,6 +338,7 @@ extern int gbl_clean_exit_on_sigterm;
 extern int gbl_debug_omit_dta_write;
 extern int gbl_debug_omit_idx_write;
 extern int gbl_debug_omit_blob_write;
+extern int gbl_debug_pthread_locks;
 extern int gbl_debug_skip_constraintscheck_on_insert;
 extern int gbl_instrument_consumer_lock;
 extern int eventlog_nkeep;

@@ -83,6 +83,7 @@ extern int __berkdb_read_alarm_ms;
 #include "logmsg.h"
 #include "reqlog.h"
 #include "comdb2_atomic.h"
+#include "dbg_locks_core.h"
 #include "comdb2_ruleset.h"
 #include "osqluprec.h"
 
@@ -1352,6 +1353,19 @@ clipper_usage:
         logmsg(LOGMSG_USER,
                 "Maximum concurrent block-processor threads is %d, maxwt is %d\n",
                 blkmax, gbl_maxwthreads);
+    }
+
+    else if (tokcmp(tok, ltok, "pthread_locks") == 0) {
+#if defined(DBG_PTHREAD_LOCKS)
+        int bSummaryOnly;
+
+        tok = segtok(line, lline, &st, &ltok);
+        bSummaryOnly = !toknum(tok, ltok);
+
+        dbg_pthread_dump(stdout, "pthread_locks", bSummaryOnly);
+#else
+        logmsg(LOGMSG_USER, "pthread locks not available.\n");
+#endif
     }
 
     else if (tokcmp(tok, ltok, "list_sql_pools") == 0) {

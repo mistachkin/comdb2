@@ -45,7 +45,7 @@
 #include "nodemap.h"
 #include "thread_stats.h"
 #include "logmsg.h"
-#include "locks_wrap.h"
+#include "pthread_wrap.h"
 
 extern void berkdb_dumptrans(DB_ENV *);
 extern int __db_panic(DB_ENV *dbenv, int err);

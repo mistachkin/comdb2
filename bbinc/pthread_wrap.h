@@ -14,35 +14,10 @@
    limitations under the License.
  */
 
-#ifndef _INCLUDED_LOCKS_H
-#define _INCLUDED_LOCKS_H
+#ifndef _INCLUDED_PTHREAD_WRAP_H
+#define _INCLUDED_PTHREAD_WRAP_H
 
-#include <inttypes.h>
-#include <string.h>
-#include <stdlib.h>
-#include "logmsg.h"
-
-#ifdef LOCK_DEBUG
-#  define LKDBG_TRACE(STR, FUNC, OBJ) logmsg(LOGMSG_USER, "%s:%d " #STR " " #FUNC "(0x%"PRIxPTR") thd:%p\n", __func__, __LINE__, (uintptr_t)OBJ, (void *)pthread_self())
-#else
-#  define LKDBG_TRACE(...)
-#endif
-
-#define LKWRAP_FIRST_(a, ...) a
-#define LKWRAP_FIRST(...) LKWRAP_FIRST_(__VA_ARGS__, 0)
-#define WRAP_PTHREAD(FUNC, ...)                                                \
-    do {                                                                       \
-        int rc;                                                                \
-        LKDBG_TRACE(TRY, FUNC, LKWRAP_FIRST(__VA_ARGS__));                     \
-        if ((rc = FUNC(__VA_ARGS__)) != 0) {                                   \
-            logmsg(LOGMSG_FATAL,                                               \
-                   "%s:%d " #FUNC "(0x%" PRIxPTR ") rc:%d (%s) thd:%p\n",      \
-                   __func__, __LINE__, (uintptr_t)LKWRAP_FIRST(__VA_ARGS__),   \
-                   rc, strerror(rc), (void *)pthread_self());                  \
-            abort();                                                           \
-        }                                                                      \
-        LKDBG_TRACE(GOT, FUNC, LKWRAP_FIRST(__VA_ARGS__));                     \
-    } while (0)
+#include "pthread_wrap_core.h"
 
 #define Pthread_attr_destroy(...)           WRAP_PTHREAD(pthread_attr_destroy, __VA_ARGS__)
 #define Pthread_attr_init(...)              WRAP_PTHREAD(pthread_attr_init, __VA_ARGS__)
@@ -70,4 +45,23 @@
 #define Pthread_rwlock_wrlock(...)          WRAP_PTHREAD(pthread_rwlock_wrlock, __VA_ARGS__)
 #define Pthread_setspecific(...)            WRAP_PTHREAD(pthread_setspecific, __VA_ARGS__)
 
-#endif
+#define Pthread_mutex_trylock(a)                                               \
+    wrap_pthread_mutex_trylock(a, __FILE__, __func__, __LINE__)
+
+#define Pthread_mutex_timedlock(a, b)                                          \
+    wrap_pthread_mutex_timedlock(a, b, __FILE__, __func__, __LINE__)
+
+#define Pthread_rwlock_tryrdlock(a)                                            \
+    wrap_pthread_rwlock_tryrdlock(a, __FILE__, __func__, __LINE__)
+
+#define Pthread_rwlock_trywrlock(a)                                            \
+    wrap_pthread_rwlock_trywrlock(a, __FILE__, __func__, __LINE__)
+
+#define Pthread_rwlock_timedrdlock(a, b)                                       \
+    wrap_pthread_rwlock_timedrdlock(a, b, __FILE__, __func__, __LINE__)
+
+#define Pthread_rwlock_timedwrlock(a, b)                                       \
+    wrap_pthread_rwlock_timedwrlock(a, b, __FILE__, __func__, __LINE__)
+
+#include "dbg_locks.h"
+#endif /* _INCLUDED_PTHREAD_WRAP_H */
