@@ -793,6 +793,28 @@ int install_static_plugins(void);
 int run_init_plugins(int phase);
 extern void clear_sqlhist();
 
+/*
+** A callback for the sqlite3_log() interface.
+*/
+static loglvl get_loglvl_for_sqlite_rc(int rc){
+    switch (rc & 0xff) { /* TODO: Fine tune this? */
+        case SQLITE_OK:      return LOGMSG_INFO;
+        case SQLITE_ROW:     return LOGMSG_DEBUG;
+        case SQLITE_DONE:    return LOGMSG_DEBUG;
+        case SQLITE_NOTICE:  return LOGMSG_WARN;
+        case SQLITE_WARNING: return LOGMSG_WARN;
+        default:             return LOGMSG_ERROR;
+    }
+}
+
+extern const char *sqlite3ErrName(int);
+
+static void comdb2_sqlite_log(void *pArg, int rc, const char *zMsg){
+    const char *zErrName = sqlite3ErrName(rc);
+    logmsg(get_loglvl_for_sqlite_rc(rc), "%s: [%p] rc=%d (%s): %s\n",
+           __func__, (void *)pthread_self(), rc, zErrName, zMsg);
+}
+
 inline int getkeyrecnums(const dbtable *tbl, int ixnum)
 {
     if (ixnum < 0 || ixnum >= tbl->nix)
@@ -3444,6 +3466,13 @@ static int init(int argc, char **argv)
         logmsg(LOGMSG_FATAL, "bdb_osql_log_repo_init failed to init log repository "
                         "rc %d bdberr %d\n",
                 rc, bdberr);
+        return -1;
+    }
+
+    rc = sqlite3_config(SQLITE_CONFIG_LOG, comdb2_sqlite_log);
+    if (rc != SQLITE_OK) {
+        logmsg(LOGMSG_FATAL,
+               "sqlite3_config failed for SQLITE_CONFIG_LOG %d\n", rc);
         return -1;
     }
 
