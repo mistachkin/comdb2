@@ -1222,6 +1222,8 @@ void fdb_packedsqlite_process_sqlitemaster_row(char *row, int rowlen,
 
 int fdb_packedsqlite_extract_genid(char *key, int *outlen, char *outbuf);
 
+int comdb2_is_temporary_sqlite_db(sqlite3 *, int);
+
 unsigned long long comdb2_table_version(const char *tablename);
 
 int fdb_add_remote_time(BtCursor *pCur, unsigned long long start,

@@ -144,6 +144,7 @@
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
 #include <logmsg.h>
+int comdb2_is_temporary_sqlite_db(sqlite3 *, int);
 int is_comdb2_index_disableskipscan(const char *);
 void get_disable_skipscan_all();
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
@@ -237,14 +238,16 @@ static void openStatTable(
     aCreateTbl[i] = 0;
     if( (pStat = sqlite3FindTable(db, zTab, pDb->zDbSName))==0 ){
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-      if( zTab[11]=='4' ){
-        db->skip4 = 1;
-        nToOpen--;
-      }else if( zTab[11]=='1' ){
-        db->skipAnalyze = 1;
-        return;
+      if( !comdb2_is_temporary_sqlite_db(db, iDb) ){
+        if( zTab[11]=='4' ){
+          db->skip4 = 1;
+          nToOpen--;
+        }else if( zTab[11]=='1' ){
+          db->skipAnalyze = 1;
+          return;
+        }
       }
-#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
       if( i<nToOpen ){
         /* The sqlite_statN table does not exist. Create it. Note that a 
         ** side-effect of the CREATE TABLE statement is to leave the rootpage 
@@ -256,7 +259,6 @@ static void openStatTable(
         aRoot[i] = (u32)pParse->regRoot;
         aCreateTbl[i] = OPFLAG_P2ISREG;
       }
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     }else{
       /* The table already exists. If zWhere is not NULL, delete all entries 
       ** associated with the table zWhere. If zWhere is NULL, delete the

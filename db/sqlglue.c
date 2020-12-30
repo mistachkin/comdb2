@@ -3380,6 +3380,10 @@ int sqlite3BtreeSetSafetyLevel(Btree *pBt, int level, int fullsync)
     return SQLITE_OK;
 }
 
+int comdb2_is_temporary_sqlite_db(sqlite3 *db, int i){
+    return db->aDb[i].pBt->is_temporary;
+}
+
 /*
  ** Open a database file.
  **

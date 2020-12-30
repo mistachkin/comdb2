@@ -678,8 +678,6 @@ void sqlite3Update(
 
   if( nChangeFrom==0 && HasRowid(pTab) ){
     sqlite3VdbeAddOp3(v, OP_Null, 0, regRowSet, regOldRowid);
-    iEph = pParse->nTab++;
-    addrOpen = sqlite3VdbeAddOp3(v, OP_OpenEphemeral, iEph, 0, regRowSet);
   }else{
     assert( pPk!=0 || HasRowid(pTab) );
     nPk = pPk ? pPk->nKeyCol : 0;
@@ -775,10 +773,9 @@ void sqlite3Update(
       ** leave it in register regOldRowid.  */
       sqlite3VdbeAddOp2(v, OP_Rowid, iDataCur, regOldRowid);
       if( eOnePass==ONEPASS_OFF ){
+        /* We need to use regRowSet, so reallocate aRegIdx[nAllIdx] */
         aRegIdx[nAllIdx] = ++pParse->nMem;
-        sqlite3VdbeAddOp3(v, OP_Insert, iEph, regRowSet, regOldRowid);
-      }else{
-        if( ALWAYS(addrOpen) ) sqlite3VdbeChangeToNoop(v, addrOpen);
+        sqlite3VdbeAddOp2(v, OP_RowSetAdd, regRowSet, regOldRowid);
       }
     }else{
       /* Read the PK of the current row into an array of registers. In
@@ -875,9 +872,8 @@ void sqlite3Update(
         VdbeCoverage(v);
       }
     }else{
-      sqlite3VdbeAddOp2(v, OP_Rewind, iEph, labelBreak); VdbeCoverage(v);
-      labelContinue = sqlite3VdbeMakeLabel(pParse);
-      addrTop = sqlite3VdbeAddOp2(v, OP_Rowid, iEph, regOldRowid);
+      labelContinue = sqlite3VdbeAddOp3(v, OP_RowSetRead, regRowSet,labelBreak,
+                               regOldRowid);
       VdbeCoverage(v);
       sqlite3VdbeAddOp3(v, OP_NotExists, iDataCur, labelContinue, regOldRowid);
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
@@ -1148,9 +1144,11 @@ void sqlite3Update(
   }else if( eOnePass==ONEPASS_MULTI ){
     sqlite3VdbeResolveLabel(v, labelContinue);
     sqlite3WhereEnd(pWInfo);
-  }else{
+  }else if( pPk || nChangeFrom ){
     sqlite3VdbeResolveLabel(v, labelContinue);
     sqlite3VdbeAddOp2(v, OP_Next, iEph, addrTop); VdbeCoverage(v);
+  }else{
+    sqlite3VdbeGoto(v, labelContinue);
   }
   sqlite3VdbeResolveLabel(v, labelBreak);
 
